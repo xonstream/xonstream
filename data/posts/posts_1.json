@@ -1,39 +1,75 @@
 [
-    {
-        "channelName":  "TestChannel",
-        "id":  "post-1",
-        "createdAt":  "2026-03-23",
-        "category":  "Test",
-        "description":  "This is a sample post to verify the backend is working.",
-        "videoSources":  [
-                             {
-                                 "videoId":  "abc123",
-                                 "platform":  "lulustream"
-                             }
-                         ],
-        "title":  "Test Post One",
-        "actors":  [
-                       "Test Actor"
-                   ],
-        "thumbnail":  "https://picsum.photos/seed/post1/640/360"
-    },
-    {
-        "channelName":  "SampleChannel",
-        "id":  "post-2",
-        "createdAt":  "2026-03-23",
-        "category":  "Movies",
-        "description":  "Another sample post for testing search and pagination.",
-        "videoSources":  [
-                             {
-                                 "videoId":  "xyz789",
-                                 "platform":  "streamtape"
-                             }
-                         ],
-        "title":  "Test Post Two",
-        "actors":  [
-                       "Actor One",
-                       "Actor Two"
-                   ],
-        "thumbnail":  "https://picsum.photos/seed/post2/640/360"
-    }
+  {
+    "channelName": "TestChannel",
+    "id": "post-1",
+    "createdAt": "2026-03-23",
+    "category": "Test",
+    "description": "This is a sample post to verify the backend is working.",
+    "videoSources": [
+      {
+        "videoId": "abc123",
+        "platform": "lulustream"
+      }
+    ],
+    "title": "Test Post One",
+    "actors": [
+      "Test Actor"
+    ],
+    "thumbnail": "https://picsum.photos/seed/post1/640/360"
+  },
+  {
+    "channelName": "SampleChannel",
+    "id": "post-2",
+    "createdAt": "2026-03-23",
+    "category": "Movies",
+    "description": "Another sample post for testing search and pagination.",
+    "videoSources": [
+      {
+        "videoId": "xyz789",
+        "platform": "streamtape"
+      }
+    ],
+    "title": "Test Post Two",
+    "actors": [
+      "Actor One",
+      "Actor Two"
+    ],
+    "thumbnail": "https://picsum.photos/seed/post2/640/360"
+  },
+  {
+    "id": "sync-1774266535980-rwa6ip",
+    "title": "Sex Education S01E08 Dual Audio {Hindi-English} 720p WEB-DL ESub [BollYFlix].mkv",
+    "description": "",
+    "actors": [],
+    "channelName": "",
+    "category": "Uncategorized",
+    "thumbnail": "https://thumb.tapecontent.net/thumb/7bZo1pmyKyiA9d9/thumb.jpg",
+    "videoSources": [
+      {
+        "platform": "streamtape",
+        "videoId": "7bZo1pmyKyiA9d9"
+      }
+    ],
+    "createdAt": "2026-03-23"
+  },
+  {
+    "id": "sync-1774266535980-g7fxk7",
+    "title": "Sex Education S01E08 Dual Audio {Hindi-English} 720p WEB-DL ESub [BollYFlix]",
+    "description": "",
+    "actors": [],
+    "channelName": "",
+    "category": "Uncategorized",
+    "thumbnail": "https://img.lulucdn.com/07mwfu69fvhp_t.jpg",
+    "videoSources": [
+      {
+        "platform": "lulustream",
+        "videoId": "07mwfu69fvhp"
+      },
+      {
+        "platform": "upnshare",
+        "videoId": "pdmkn9"
+      }
+    ],
+    "createdAt": "2026-03-23"
+  }
 ]
