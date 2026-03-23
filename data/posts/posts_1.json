@@ -1,1 +1,39 @@
-
+[
+    {
+        "channelName":  "TestChannel",
+        "id":  "post-1",
+        "createdAt":  "2026-03-23",
+        "category":  "Test",
+        "description":  "This is a sample post to verify the backend is working.",
+        "videoSources":  [
+                             {
+                                 "videoId":  "abc123",
+                                 "platform":  "lulustream"
+                             }
+                         ],
+        "title":  "Test Post One",
+        "actors":  [
+                       "Test Actor"
+                   ],
+        "thumbnail":  "https://picsum.photos/seed/post1/640/360"
+    },
+    {
+        "channelName":  "SampleChannel",
+        "id":  "post-2",
+        "createdAt":  "2026-03-23",
+        "category":  "Movies",
+        "description":  "Another sample post for testing search and pagination.",
+        "videoSources":  [
+                             {
+                                 "videoId":  "xyz789",
+                                 "platform":  "streamtape"
+                             }
+                         ],
+        "title":  "Test Post Two",
+        "actors":  [
+                       "Actor One",
+                       "Actor Two"
+                   ],
+        "thumbnail":  "https://picsum.photos/seed/post2/640/360"
+    }
+]
