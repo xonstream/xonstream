@@ -29,5 +29,41 @@
       "Molly Little"
     ],
     "createdAt": "2026-03-23"
+  },
+  {
+    "id": "sync-1774347134127-w8c1fh",
+    "title": "[Bratty Sis] - All It Took Was A Dare - S26E6",
+    "description": "",
+    "actors": [],
+    "channelName": "",
+    "category": "Uncategorized",
+    "thumbnail": "https://thumb.tapecontent.net/thumb/rBBdAe3kjRCbqGa/thumb.jpg",
+    "videoSources": [
+      {
+        "platform": "streamtape",
+        "videoId": "rBBdAe3kjRCbqGa"
+      },
+      {
+        "platform": "lulustream",
+        "videoId": "p5p8wnzxpqar"
+      }
+    ],
+    "createdAt": "2026-03-24"
+  },
+  {
+    "id": "sync-1774347134127-citqqz",
+    "title": "Bratty-Sis-All-It-Took-Was-A-Dare-S26E6",
+    "description": "",
+    "actors": [],
+    "channelName": "",
+    "category": "Uncategorized",
+    "thumbnail": "/tRa2LkuqbUU24Vk_M1qsMg/36/9dr5ku6k/56l9rb/poster.png",
+    "videoSources": [
+      {
+        "platform": "upnshare",
+        "videoId": "o8hywr"
+      }
+    ],
+    "createdAt": "2026-03-24"
   }
 ]
