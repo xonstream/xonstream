@@ -2,11 +2,11 @@
   {
     "id": "sync-1774522825422-0x0465",
     "title": "Bratty Sis All It Took Was A Dare S26E6",
-    "description": "",
-    "actors": [],
-    "channelName": "",
-    "category": "Uncategorized",
     "thumbnail": "https://img.lulucdn.com/p5p8wnzxpqar_t.jpg",
+    "duration": "",
+    "description": "",
+    "channelName": "Bratty Sis",
+    "category": "Uncategorized",
     "videoSources": [
       {
         "platform": "streamtape",
@@ -21,6 +21,7 @@
         "videoId": "o8hywr"
       }
     ],
+    "actors": [],
     "createdAt": "2026-03-26"
   },
   {
