@@ -106,16 +106,6 @@ function ActorCircle({ actorName }: { actorName: string }) {
   const actors = data?.data ?? [];
   const actor = actors.find(a => a.name.toLowerCase() === actorName.toLowerCase());
   
-  // Debug logging
-  if (actors.length > 0) {
-    console.log('ActorCircle debug:', { 
-      lookingFor: actorName,
-      actorsCount: actors.length,
-      actorNames: actors.map(a => a.name),
-      foundActor: actor ? { name: actor.name, hasImage: !!actor.image } : null
-    });
-  }
-  
   const handleClick = () => {
     if (actor) {
       navigate(`/actor/${actor.id}`);

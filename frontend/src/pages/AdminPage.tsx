@@ -227,13 +227,15 @@ function Thumbnail({ post }: { post: Post }) {
   
   const src = thumbnailSrc;
 
-  // Debug: Log when thumbnail fails to load
+  // Debug: Log when thumbnail fails to load (development only)
   const handleError = () => {
-    console.warn(`Thumbnail failed to load for post "${post.title}":`, {
-      originalPath: post.thumbnail,
-      builtUrl: thumbnailSrc,
-      src
-    });
+    if (import.meta.env.DEV) {
+      console.warn(`Thumbnail failed to load for post "${post.title}":`, {
+        originalPath: post.thumbnail,
+        builtUrl: thumbnailSrc,
+        src
+      });
+    }
     setError(true);
   };
 
@@ -268,13 +270,15 @@ function MobileThumbnail({ post }: { post: Post }) {
   
   const src = thumbnailSrc;
 
-  // Debug: Log when thumbnail fails to load
+  // Debug: Log when mobile thumbnail fails to load (development only)
   const handleError = () => {
-    console.warn(`Mobile thumbnail failed to load for post "${post.title}":`, {
-      originalPath: post.thumbnail,
-      builtUrl: thumbnailSrc,
-      src
-    });
+    if (import.meta.env.DEV) {
+      console.warn(`Mobile thumbnail failed to load for post "${post.title}":`, {
+        originalPath: post.thumbnail,
+        builtUrl: thumbnailSrc,
+        src
+      });
+    }
     setError(true);
   };
 
@@ -386,7 +390,6 @@ export default function AdminPage() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState(() => {
     const currentUser = getCurrentUser();
-    console.log('AdminPage: Initial user from localStorage:', currentUser);
     return currentUser;
   });
   
@@ -455,27 +458,10 @@ export default function AdminPage() {
 
   const fetchBackendPosts = async () => {
     setLoadingBackend(true);
-    console.log('Fetching posts from backend...');
     try {
       const j = await fetchAdminPosts();
-      console.log('Backend posts response:', j);
       
       if (j.success && j.data) {
-        console.log('Posts fetched:', j.data.length, 'posts');
-        if (j.data.length > 0) {
-          console.log('🔵🔵🔵 First post CATEGORIES:', j.data[0].categories);
-          console.log('🔵🔵🔵 First post full structure:', JSON.stringify(j.data[0], null, 2));
-          console.log('🔵🔵🔵 Category type:', typeof j.data[0].categories, 'isArray:', Array.isArray(j.data[0].categories));
-          console.log('🔵🔵🔵 Category length:', j.data[0].categories?.length);
-          
-          // Log all posts categories
-          console.log('=== ALL POSTS CATEGORIES ===');
-          j.data.forEach((post: Post, index: number) => {
-            console.log(`Post ${index + 1}: "${post.title}" - Categories:`, post.categories);
-          });
-          console.log('===========================');
-        }
-        
         // Clean titles on load - remove ALL video extensions
         const cleaned = j.data.map((post: Post) => ({
           ...post,
@@ -485,10 +471,8 @@ export default function AdminPage() {
             .trim()
         }));
         setBackendPosts(cleaned);
-        console.log('Posts loaded successfully:', cleaned.length, 'posts');
         toast.success(`Loaded ${cleaned.length} posts`);
       } else {
-        console.error('Fetch posts failed - no success or data:', j);
         toast.error('Failed to load posts: No data returned');
         setBackendPosts([]);
       }
@@ -565,19 +549,13 @@ export default function AdminPage() {
   
   // Check authorization on mount and when user changes — redirect to /meow if not admin
   useEffect(() => { 
-    console.log('AdminPage: Authorization check - user:', user);
     if (!user?.isAdmin) {
-      console.log('AdminPage: User is not admin, redirecting to /meow');
       navigate('/meow', { replace: true }); 
-    } else {
-      console.log('AdminPage: User is admin, showing panel');
     }
   }, [user, navigate]);
   
   // Preload data when switching tabs to prevent blank screens
   useEffect(() => {
-    console.log('Tab changed to:', tab, 'Posts count:', backendPosts.length);
-    
     // Set loading state for the tab
     setTabLoading(prev => ({ ...prev, [tab]: true }));
     
@@ -593,26 +571,20 @@ export default function AdminPage() {
         if (tab === 'posts') {
           // If posts not loaded yet, fetch them
           if (backendPosts.length === 0) {
-            console.log('Loading posts for posts tab...');
             await fetchBackendPosts();
-          } else {
-            console.log('Posts already loaded, skipping fetch');
           }
         } else if (tab === 'channels') {
           if (chs.length === 0) {
-            console.log('Loading channels...');
             const r = await fetchChannels();
             if (r.success) setChs(r.data);
           }
         } else if (tab === 'actors') {
           if (acts.length === 0) {
-            console.log('Loading actors...');
             const r = await fetchActors();
             if (r.success) setActs(r.data);
           }
         } else if (tab === 'categories') {
           if (cats.length === 0) {
-            console.log('Loading categories...');
             const r = await fetchCategories();
             if (r.success) setCats(r.data);
           }
@@ -623,7 +595,6 @@ export default function AdminPage() {
       } finally {
         // ALWAYS clear loading state, even if no data was fetched
         clearTimeout(safetyTimeout);
-        console.log('Clearing loading state for tab:', tab);
         setTabLoading(prev => ({ ...prev, [tab]: false }));
       }
     };
@@ -692,15 +663,6 @@ export default function AdminPage() {
       
       const seekSrc = postData.videoSources?.find((s: any) => s.platform === 'seekstreaming');
       
-      // Debug log to see what data we have
-      console.log('=== EDIT POST DEBUG ===');
-      console.log('Full post data:', postData);
-      console.log('Thumbnail:', postData.thumbnail);
-      console.log('Video sources:', postData.videoSources);
-      console.log('Categories:', postData.categories);
-      console.log('Actors:', postData.actors);
-      console.log('=======================');
-      
       setForm({
         title: cleanTitle,
         thumbnail: postData.thumbnail || '',
@@ -739,28 +701,8 @@ export default function AdminPage() {
     // Find category IDs from names  
     const categoryIds = formCategories.map(catName => cats.find(c => c.name === catName)?.id).filter(Boolean) as string[];
 
-    console.log('handleSavePost - Channel lookup:', {
-      formChannelName: form.channelName,
-      availableChannels: chs.map(c => ({ name: c.name, id: c.id })),
-      foundChannelId: channelId,
-      formCategories,
-      categoryIds
-    });
-    
-    console.log('=== CATEGORIES DEBUG ===');
-    console.log('Form Categories (names):', formCategories);
-    console.log('All Categories:', cats.map(c => ({ name: c.name, id: c.id })));
-    console.log('Mapped Category IDs:', categoryIds);
-    console.log('========================');
-
     const isEdit = modal?.mode === 'edit';
     const postId = modal?.data?.id;
-    
-    console.log('=== SAVE POST DEBUG ===');
-    console.log('Is Edit:', isEdit);
-    console.log('Post ID:', postId);
-    console.log('Modal data:', modal?.data);
-    console.log('=======================');
     
     if (isEdit && !postId) {
       console.error('CRITICAL: Edit mode but no post ID!');
@@ -778,19 +720,8 @@ export default function AdminPage() {
       videoSources: updatedSources,
     };
     
-    console.log('=== ADMIN POST SAVE ===');
-    console.log('Mode:', isEdit ? 'EDIT' : 'CREATE');
-    console.log('formActors:', formActors);
-    console.log('formCategories:', formCategories);
-    console.log('categoryIds:', categoryIds);
-    console.log('Full payload:', JSON.stringify(payload, null, 2));
-    console.log('=====================');
-    
     setIsSaving(true);
     try {
-      console.log('Sending request to:', `${API_BASE}/api/admin/posts${isEdit ? `/${postId}` : ''}`);
-      console.log('Request method:', isEdit ? 'PUT' : 'POST');
-      
       const resp = await fetch(`${API_BASE}/api/admin/posts${isEdit ? `/${postId}` : ''}`, {
         method: isEdit ? 'PUT' : 'POST',
         credentials: 'include',
@@ -798,17 +729,14 @@ export default function AdminPage() {
         body: JSON.stringify(payload),
       });
       
-      console.log('Response status:', resp.status);
       const json = await resp.json();
-      console.log('Response body:', json);
       
       if (json.success) {
         toast.success(modal?.mode === 'edit' ? '✓ Post updated successfully!' : '✓ Post added successfully!');
         fetchBackendPosts();
         setModal(null);
       } else {
-        console.error('Save failed:', json);
-        toast.error(json.message || json.error || 'Save failed - check console for details');
+        toast.error(json.message || json.error || 'Save failed');
       }
     } catch (error) {
       console.error('Exception during save:', error);
@@ -876,19 +804,11 @@ export default function AdminPage() {
       return;
     }
     
-    console.log('=== BULK UPDATE START ===');
-    console.log('Selected IDs:', Array.from(selectedIds));
-    console.log('Bulk Action:', bulkAction);
-    console.log('Bulk Channel:', bulkChannel);
-    console.log('Bulk Categories:', bulkCategories);
-    console.log('Bulk Actors:', bulkActors);
-    
     // Find channel ID from name
     let channelId: string | null = null;
     if (bulkAction === 'channel' && bulkChannel) {
       const foundChannel = chs.find(c => c.name === bulkChannel);
       channelId = foundChannel?.id || null;
-      console.log('Found channel:', channelId, 'from name:', bulkChannel);
       if (!channelId) {
         toast.error('Channel not found in database');
         return;
@@ -902,8 +822,6 @@ export default function AdminPage() {
         const foundCat = cats.find(c => c.name === catName);
         return foundCat?.id || null;
       }).filter(id => id !== null) as string[];
-      
-      console.log('Found categories:', categoryIds, 'from names:', bulkCategories);
       
       if (categoryIds.length === 0) {
         toast.error('Categories not found in database');
@@ -925,15 +843,11 @@ export default function AdminPage() {
       if (bulkAction === 'category' && categoryIds.length > 0) {
         // Send ALL category IDs, not just the first one
         bulkPayload.setCategories = categoryIds;
-        console.log('🔵 Setting setCategories in payload:', categoryIds);
       }
       
       if (bulkAction === 'actors' && bulkActors.length > 0) {
         bulkPayload.addActors = bulkActors;
       }
-      
-      console.log('🔵 Final bulk payload keys:', Object.keys(bulkPayload));
-      console.log('Sending bulk payload:', JSON.stringify(bulkPayload, null, 2));
       
       const resp = await fetch(`${API_BASE}/api/admin/posts/bulk-edit`, {
         method: 'POST',
@@ -942,29 +856,20 @@ export default function AdminPage() {
         body: JSON.stringify(bulkPayload),
       });
       
-      console.log('Bulk edit response status:', resp.status);
       const json = await resp.json();
-      console.log('Bulk edit response FULL:', JSON.stringify(json, null, 2));
       
       if (json.success) {
         const { updatedCount, errorCount, errors } = json.data || {};
-        console.log('Updated count:', updatedCount, 'Error count:', errorCount);
-        console.log('Errors array:', errors);
         
         if (updatedCount > 0) {
           toast.success(`✓ Updated ${updatedCount} posts${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
-          if (errorCount > 0) {
-            console.warn('Some posts failed to update:', errors);
-          }
           fetchBackendPosts();
           setSelectedIds(new Set());
           setModal(null);
         } else {
-          toast.error('No posts were updated - check console for errors');
-          console.error('Bulk update response:', json);
+          toast.error('No posts were updated');
         }
       } else {
-        console.error('Bulk edit failed:', json);
         toast.error(json.message || 'Failed to update posts');
       }
     } catch (err) {
@@ -999,11 +904,9 @@ export default function AdminPage() {
         toast.error(result.error || 'Title cleaning failed');
       }
       
-      console.log('🎉 Done!', result);
-      
     } catch (error) {
-      console.error('❌ Error cleaning titles:', error);
-      toast.error('Failed to clean titles. Check console for details.');
+      console.error('Error cleaning titles:', error);
+      toast.error('Failed to clean titles');
     } finally {
       setLoadingBackend(false);
     }
