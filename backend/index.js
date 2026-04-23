@@ -181,7 +181,10 @@ const startServer = async () => {
           mediaSrc: ["'self'", 'https:', 'http:'],
           frameSrc: ["'self'", 'https:', 'http:']
         }
-      }
+      },
+      // Disable Permissions-Policy to avoid browser warnings
+      // These features are not used by our application
+      permissionsPolicy: false
     });
 
     await fastify.register(cookie, {
