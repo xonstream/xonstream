@@ -383,9 +383,20 @@ module.exports = async (fastify, opts) => {
         .eq('id', id)
         .single();
 
+      // Handle "no rows returned" error gracefully
+      if (error && error.code === 'PGRST116') {
+        return reply.status(404).send({
+          success: false,
+          message: 'Post not found'
+        });
+      }
+
       if (error) {
         logger.error(`Error fetching post ${id}`, error);
-        throw error;
+        return reply.status(500).send({
+          success: false,
+          message: 'Failed to fetch post'
+        });
       }
 
       if (!post) {
@@ -463,6 +474,14 @@ module.exports = async (fastify, opts) => {
         .single();
 
       if (error || !post) {
+        // Handle "no rows returned" error gracefully
+        if (error && error.code === 'PGRST116') {
+          return reply.status(404).send({
+            success: false,
+            message: 'Post not found'
+          });
+        }
+        
         return reply.status(404).send({
           success: false,
           message: 'Post not found'

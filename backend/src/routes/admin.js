@@ -4,10 +4,11 @@ const syncService = require('../services/syncService');
 const logger = require('../utils/logger');
 
 module.exports = async (fastify, opts) => {
-  // Add auth hook for all routes except test-sync
+  // Add auth hook for all admin routes EXCEPT public endpoints
   fastify.addHook('onRequest', async (request, reply) => {
-    // Skip auth for test-sync endpoint
-    if (request.url === '/api/admin/test-sync') {
+    // Skip auth for public endpoints
+    if (request.url === '/api/admin/test-sync' || 
+        request.url === '/api/public/settings/player') {
       return;
     }
     return fastify.authenticateAdmin(request, reply);

@@ -26,7 +26,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, options);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `API error ${res.status}`);
+    // Return user-friendly error without exposing full URL
+    throw new Error(body.message || body.error || `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
 }
