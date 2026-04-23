@@ -1,6 +1,7 @@
 import type { Post, VideoLink, VideoSource, PaginatedResponse, Channel, Actor } from './types';
 
-export const API_BASE = '';
+// Use environment variable if set, otherwise use production backend URL
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://xonstream-xonstream.hf.space';
 
 // Admin authentication helpers
 export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string }> {
