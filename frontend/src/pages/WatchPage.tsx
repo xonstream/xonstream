@@ -179,7 +179,10 @@ export default function WatchPage() {
 
   const { data: postData, isError: postError } = useQuery({
     queryKey: ['post', videoId],
-    queryFn: () => fetchPost(videoId),
+    queryFn: () => fetchPost(videoId).catch((error) => {
+      // Silently handle errors - don't let them propagate to console
+      return { success: false, data: null, error: error.message };
+    }),
     enabled: !!videoId,
     retry: 0,
     staleTime: 60_000,
@@ -187,7 +190,10 @@ export default function WatchPage() {
 
   const { data: videoData } = useQuery({
     queryKey: ['videoLinks', videoId],
-    queryFn: () => fetchVideoLinks(videoId),
+    queryFn: () => fetchVideoLinks(videoId).catch((error) => {
+      // Silently handle errors - don't let them propagate to console
+      return { success: false, data: { postId: videoId, videoLink: null, sources: [] }, error: error.message };
+    }),
     enabled: !!videoId,
     retry: 0,
     staleTime: 0,  // always fresh — server ordering must be correct immediately
@@ -195,7 +201,10 @@ export default function WatchPage() {
 
   const { data: relatedData } = useQuery({
     queryKey: ['posts', 1, 'all'],
-    queryFn: () => import('@/lib/api').then(m => m.fetchPosts(1, 7)),
+    queryFn: () => import('@/lib/api').then(m => m.fetchPosts(1, 7)).catch(() => {
+      // Return empty array on error
+      return { success: true, data: [] };
+    }),
     retry: 0,
     staleTime: 60_000,
   });
@@ -203,7 +212,10 @@ export default function WatchPage() {
   // Fetch player settings for default server
   const { data: playerSettingsData } = useQuery({
     queryKey: ['playerSettings'],
-    queryFn: () => fetchPlayerSettings(),
+    queryFn: () => fetchPlayerSettings().catch(() => {
+      // Return default settings on error
+      return { success: true, data: { autoPlay: true, defaultServer: 'SERVER_01', updatedAt: '' } };
+    }),
     retry: 0,
     staleTime: 300_000,
   });
