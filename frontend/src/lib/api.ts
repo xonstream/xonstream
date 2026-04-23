@@ -1,35 +1,63 @@
 import type { Post, VideoLink, VideoSource, PaginatedResponse, Channel, Actor } from './types';
 
-// Use environment variable if set, otherwise use production backend URL
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://xonstream-xonstream.hf.space';
+// Backend API URL from environment variable
+// This MUST be set in .env file - no hardcoded fallbacks for security
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+if (!API_BASE_URL) {
+  console.error('VITE_API_BASE_URL is not set in environment variables');
+}
+
+// Export API base - will be undefined if env var is not set
+export const API_BASE = API_BASE_URL || '';
 
 // Admin authentication helpers
 export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/admin/login`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    return res.json();
+  } catch (error) {
+    console.error('Admin login failed');
+    return { success: false, message: 'Login failed. Please try again.' };
+  }
 }
 
 export async function adminLogout(): Promise<{ success: boolean }> {
-  const res = await fetch(`${API_BASE}/api/admin/logout`, {
-    method: 'POST',
-    credentials: 'include',
-  });
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return res.json();
+  } catch (error) {
+    console.error('Admin logout failed');
+    return { success: false };
+  }
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, options);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    // Return user-friendly error without exposing full URL
-    throw new Error(body.message || body.error || `Request failed (${res.status})`);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, options);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      // Return user-friendly error without exposing URLs or sensitive data
+      const errorMessage = body.message || body.error || `Request failed (${res.status})`;
+      throw new Error(errorMessage);
+    }
+    return res.json() as Promise<T>;
+  } catch (error) {
+    // If it's a network error (no response), don't expose the URL
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new Error('Unable to connect to server. Please check your internet connection.');
+    }
+    // Re-throw other errors (already sanitized)
+    throw error;
   }
-  return res.json() as Promise<T>;
 }
 
 // ─── Posts ────────────────────────────────────────────────────────────────────
