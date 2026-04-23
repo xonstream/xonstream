@@ -1,0 +1,60 @@
+# XON STREAM - Robots.txt
+# Premium Adult Video Streaming Platform
+
+# Allow all search engines to crawl the site
+User-agent: *
+Allow: /
+
+# Allow major search engines full access
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Slurp
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: Baiduspider
+Allow: /
+
+User-agent: YandexBot
+Allow: /
+
+User-agent: Sogou
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: Pinterestbot
+Allow: /
+
+# Block admin and private areas
+Disallow: /admin/
+Disallow: /api/
+Disallow: /private/
+Disallow: /cdn-cgi/
+Disallow: /*?sort=*
+Disallow: /*&sort=*
+
+# Block duplicate content
+Disallow: /search?*order=*
+Disallow: /search?*filter=*
+
+# Sitemap location
+Sitemap: https://xonstream.com/sitemap.xml

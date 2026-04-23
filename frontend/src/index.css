@@ -1,0 +1,213 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dark mode is default - improved contrast */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 100%;
+    
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 100%;
+    
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 100%;
+    
+    --primary: 0 100% 55%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 60%;
+    
+    --accent: 210 100% 55%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 210 100% 55%;
+    
+    --radius: 0.75rem;
+    
+    --bg-tertiary: 0 0% 12%;
+    --text-secondary: 0 0% 70%;
+    --text-muted: 0 0% 50%;
+    
+    --server-blue: 210 100% 62%;
+    --server-green: 145 100% 39%;
+    --server-orange: 26 100% 50%;
+    --server-purple: 285 100% 49%;
+    
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 67%;
+    --sidebar-primary: 0 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 19%;
+    --sidebar-ring: 210 100% 62%;
+
+    font-family: 'Inter', sans-serif;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 6%;
+    
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 6%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 6%;
+    
+    --primary: 0 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 0 0% 95%;
+    --secondary-foreground: 0 0% 6%;
+    
+    --muted: 0 0% 90%;
+    --muted-foreground: 0 0% 38%;
+    
+    --accent: 210 100% 62%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 210 100% 62%;
+    
+    --bg-tertiary: 0 0% 90%;
+    --text-secondary: 0 0% 38%;
+    --text-muted: 0 0% 56%;
+    
+    --sidebar-background: 0 0% 95%;
+    --sidebar-foreground: 0 0% 38%;
+    --sidebar-primary: 0 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 90%;
+    --sidebar-accent-foreground: 0 0% 6%;
+    --sidebar-border: 0 0% 88%;
+    --sidebar-ring: 210 100% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Custom scrollbar - thin and black */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #000000;
+    border-radius: 2px;
+    transition: background 0.2s ease;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #1a1a1a;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  
+  /* Firefox scrollbar - thin black */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #000000 transparent;
+  }
+  
+  /* Range slider styling - thin black */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #1a1a1a;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #000000;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
+  
+  input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #000000;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    transition: transform 0.15s ease;
+  }
+  
+  input[type="range"]::-moz-range-thumb:hover {
+    transform: scale(1.2);
+  }
+}
+
+@layer utilities {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .card-hover {
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Step 02: Ensure cursor is always visible on video player — applies to wrapper and iframe element */
+.aspect-video {
+  cursor: default !important;
+}
+
+.aspect-video iframe {
+  cursor: default !important;
+  display: block;
+}
+
+/* Extra safety: target the player wrapper div and any overlay */
+div[style*="cursor: default"] * {
+  cursor: default;
+}

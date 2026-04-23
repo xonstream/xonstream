@@ -1,0 +1,122 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Rocket Loader Animations */
+@keyframes speeder {
+  0% { transform: translate(2px, 1px) rotate(0deg); }
+  10% { transform: translate(-1px, -3px) rotate(-1deg); }
+  20% { transform: translate(-2px, 0px) rotate(1deg); }
+  30% { transform: translate(1px, 2px) rotate(0deg); }
+  40% { transform: translate(1px, -1px) rotate(1deg); }
+  50% { transform: translate(-1px, 3px) rotate(-1deg); }
+  60% { transform: translate(-1px, 1px) rotate(0deg); }
+  70% { transform: translate(3px, 1px) rotate(-1deg); }
+  80% { transform: translate(-2px, -1px) rotate(1deg); }
+  90% { transform: translate(2px, 1px) rotate(0deg); }
+  100% { transform: translate(1px, -2px) rotate(-1deg); }
+}
+
+@keyframes fazer1 {
+  0% { left: 0; }
+  100% { left: -80px; opacity: 0; }
+}
+
+@keyframes fazer2 {
+  0% { left: 0; }
+  100% { left: -100px; opacity: 0; }
+}
+
+@keyframes fazer3 {
+  0% { left: 0; }
+  100% { left: -50px; opacity: 0; }
+}
+
+@keyframes fazer4 {
+  0% { left: 0; }
+  100% { left: -150px; opacity: 0; }
+}
+
+@keyframes lf1 {
+  0% { left: 200%; }
+  100% { left: -200%; opacity: 0; }
+}
+
+@keyframes lf2 {
+  0% { left: 200%; }
+  100% { left: -200%; opacity: 0; }
+}
+
+@keyframes lf3 {
+  0% { left: 200%; }
+  100% { left: -100%; opacity: 0; }
+}
+
+@keyframes lf4 {
+  0% { left: 200%; }
+  100% { left: -100%; opacity: 0; }
+}
+
+@keyframes moveClouds1 {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-2000px); }
+}
+
+@keyframes moveClouds2 {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-2000px); }
+}
+
+@keyframes moveClouds3 {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-2000px); }
+}
+
+@keyframes moveClouds4 {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-2000px); }
+}
+
+@keyframes moveClouds5 {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-2000px); }
+}

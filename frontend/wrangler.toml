@@ -1,0 +1,10 @@
+name = "xonstream"
+compatibility_date = "2024-01-01"
+
+[build]
+command = "npm install && npm run build"
+output_dir = "dist"
+pages_build_output_dir = "dist"
+
+[site]
+bucket = "./"
