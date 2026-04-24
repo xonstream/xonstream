@@ -144,7 +144,7 @@ class SyncService {
           title: this.capitalizeWords(normalizedName),
           description: '',
           actors: [],
-          channel: null,
+           channel: this.capitalizeWords(normalizedName),
           category: null,
           thumbnail: thumbnail,
           videoSources: videoSources
@@ -159,19 +159,54 @@ class SyncService {
         try {
           // Insert posts one by one with their video sources
           for (const post of newPosts) {
-            try {
-              // Insert post
-              const { data: newPost, error: postError } = await supabase
-                .from('posts')
-                .insert({
-                  title: post.title,
-                  description: post.description,
-                  thumbnail: post.thumbnail,
-                  channel_id: post.channel,
-                  category_id: post.category
-                })
-                .select()
-                .single();
+             try {
+               // Get or create channel for the post
+               let channelId = null;
+               const channelName = post.channel;
+
+               if (channelName) {
+                 // Check if channel exists
+                 const { data: existingChannel, error: channelFetchError } = await supabase
+                   .from('channels')
+                   .select('id')
+                   .eq('name', channelName)
+                   .single();
+
+                 if (channelFetchError && channelFetchError.code !== 'PGRST116') {
+                   logger.error(`Error fetching channel ${channelName}`, channelFetchError);
+                 }
+
+                 if (existingChannel) {
+                   channelId = existingChannel.id;
+                 } else {
+                   // Create new channel
+                   const { data: newChannel, error: channelCreateError } = await supabase
+                     .from('channels')
+                     .insert({ name: channelName })
+                     .select('id')
+                     .single();
+
+                   if (channelCreateError) {
+                     logger.error(`Error creating channel ${channelName}`, channelCreateError);
+                   } else if (newChannel) {
+                     channelId = newChannel.id;
+                     logger.info(`Created new channel: ${channelName} (ID: ${channelId})`);
+                   }
+                 }
+               }
+
+               // Insert post
+               const { data: newPost, error: postError } = await supabase
+                 .from('posts')
+                 .insert({
+                   title: post.title,
+                   description: post.description,
+                   thumbnail: post.thumbnail,
+                   channel_id: channelId,
+                   category_id: post.category
+                 })
+                 .select()
+                 .single();
 
               if (postError) {
                 if (postError.code !== '23505') { // 23505 = unique violation

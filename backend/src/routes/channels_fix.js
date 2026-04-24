@@ -113,19 +113,27 @@ module.exports = async (fastify, opts) => {
 
       logger.info(`=== FETCHING CHANNEL POSTS ===`);
       logger.info(`Channel ID: ${id}`);
-      logger.info(`Channel Name: ${channel.name}`);
       logger.info(`Page: ${page}, PerPage: ${perPage}`);
       
-      // Filter posts where title starts with channel name (case-insensitive)
-      const titlePrefix = `${channel.name}%`;
-      
-      // DIAGNOSTIC: Check total posts with this channel_id AND matching title
-      const { count: totalMatchingPosts } = await supabase
+      // DIAGNOSTIC: Check total posts with this channel_id
+      const { count: totalWithThisChannel } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
-        .eq('channel_id', id)
-        .ilike('title', titlePrefix);
-      logger.info(`Total posts with channel_id=${id} AND title starts with "${channel.name}": ${totalMatchingPosts}`);
+        .eq('channel_id', id);
+      logger.info(`Total posts in database with channel_id=${id}: ${totalWithThisChannel}`);
+      
+      // DIAGNOSTIC: Check posts with NULL channel_id
+      const { count: totalNullChannel } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true })
+        .is('channel_id', null);
+      logger.info(`Total posts with NULL channel_id: ${totalNullChannel}`);
+      
+      // DIAGNOSTIC: Check total posts
+      const { count: totalPosts } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true });
+      logger.info(`Total posts in database: ${totalPosts}`);
 
       const { data: posts, error, count } = await supabase
         .from('posts')
@@ -136,27 +144,11 @@ module.exports = async (fastify, opts) => {
           post_video_sources(platform, video_id)
         `, { count: 'exact' })
         .eq('channel_id', id)
-        .ilike('title', titlePrefix)
         .order('created_at', { ascending: false })
         .range(skip, skip + perPage - 1);
 
       logger.info(`\n========================================`);
       logger.info(`RAW SUPABASE QUERY RESULTS`);
-      logger.info(`Expected channel_id: ${id}`);
-      if (posts && posts.length > 0) {
-        var wrongCount = 0;
-        posts.forEach((p, i) => {
-          if (p.channel_id !== id) {
-            logger.error(`  Post ${i+1}: WRONG channel_id=${p.channel_id} (title: ${p.title})`);
-            wrongCount++;
-          }
-        });
-        if (wrongCount > 0) {
-          logger.error(`FOUND ${wrongCount} posts with wrong channel_id!`);
-        } else {
-          logger.info(`✓ All ${posts.length} posts have correct channel_id`);
-        }
-      }
       logger.info(`Query: SELECT * FROM posts WHERE channel_id = '${id}'`);
       logger.info(`Posts returned: ${posts?.length || 0}`);
       logger.info(`Total count from query: ${count}`);
@@ -180,9 +172,7 @@ module.exports = async (fastify, opts) => {
       // CRITICAL VALIDATION: Filter out any posts that don't actually belong to this channel
       // This prevents posts with wrong channel_id from appearing
       const validPosts = (posts || []).filter(post => {
-        // Only filter if channel_id has a value that does not match
-        // Posts with null/undefined channel_id should still be displayed
-        if (post.channel_id != null && post.channel_id !== id) {
+        if (post.channel_id !== id) {
           logger.error(`FILTERING OUT: Post "${post.title}" (ID: ${post.id}) has WRONG channel_id=${post.channel_id}, expected=${id}`);
           return false;
         }
@@ -203,15 +193,7 @@ module.exports = async (fastify, opts) => {
         throw error;
       }
 
-      const total = count || 0;
-
-      // IMPORTANT: Use validPosts count for accurate pagination
-      // Supabase count includes all posts matching channel_id in the initial query
-      // but we may have filtered out posts with wrong channel_id
-      // Using validPosts.length ensures pagination only counts posts that will be displayed
-      const actualTotal = count;
-
-      // Fetch all categories for these posts from the junction table
+      const total = count || 0;\r\n\r\n      // IMPORTANT: Use validPosts count for accurate pagination\r\n      // Supabase count includes all posts matching channel_id in the initial query\r\n      // but we may have filtered out posts with wrong channel_id\r\n      // Using validPosts.length ensures pagination only counts posts that will be displayed\r\n      const actualTotal = validPosts.length;\r\n\r\n      // Fetch all categories for these posts from the junction table
       const postIds = (validPosts || []).map(p => p.id);
       let categoriesMap = {};
       
@@ -286,12 +268,7 @@ module.exports = async (fastify, opts) => {
 
       const result = {
         posts: formattedPosts,
-        pagination: {
-          page,
-          perPage,
-          total: actualTotal,
-          totalPages: Math.ceil(actualTotal / perPage)
-        }
+        pagination: {\r\n          page,\r\n          perPage,\r\n          total: actualTotal,\r\n          totalPages: Math.ceil(actualTotal / perPage)\r\n        }
       };
 
       cacheService.set(cacheKey, result, 3600);
@@ -300,8 +277,7 @@ module.exports = async (fastify, opts) => {
         success: true,
         data: {
           channel,
-          posts: formattedPosts,
-          pagination: result.pagination
+          posts: formattedPosts,\r\n          pagination: result.pagination
         }
       });
     } catch (error) {

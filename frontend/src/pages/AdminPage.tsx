@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signOut, getSettings, saveSettings } from '@/lib/store';
 import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, adminLogout } from '@/lib/api';
+import Loader from '@/components/Loader';
 
 import type { Channel, Actor, Category, Post, VideoSourceInput } from '@/lib/types';
 import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles } from 'lucide-react';
@@ -462,6 +463,16 @@ export default function AdminPage() {
       const j = await fetchAdminPosts();
       
       if (j.success && j.data) {
+        // DIAGNOSTIC: Log EXACT data received from API
+        console.log('=== ADMIN POSTS RECEIVED FROM API ===');
+        console.log(`Total posts: ${j.data.length}`);
+        j.data.slice(0, 5).forEach((post: any, index: number) => {
+          console.log(`Post ${index + 1}: "${post.title}"`);
+          console.log(`  - channelId: ${post.channelId || 'NULL'}`);
+          console.log(`  - channelName: ${post.channelName || 'NULL'}`);
+        });
+        console.log('=======================================');
+        
         // Clean titles on load - remove ALL video extensions
         const cleaned = j.data.map((post: Post) => ({
           ...post,
@@ -732,6 +743,14 @@ export default function AdminPage() {
       const json = await resp.json();
       
       if (json.success) {
+        // DIAGNOSTIC: Log what was saved
+        console.log('=== POST SAVE SUCCESSFUL ===');
+        console.log(`Post ID: ${postId || 'NEW'}`);
+        console.log(`Channel ID sent: ${channelId || 'NULL'}`);
+        console.log(`Channel Name sent: ${form.channelName || 'NULL'}`);
+        console.log('Response:', json);
+        console.log('=============================');
+        
         toast.success(modal?.mode === 'edit' ? '✓ Post updated successfully!' : '✓ Post added successfully!');
         fetchBackendPosts();
         setModal(null);
@@ -1120,12 +1139,13 @@ export default function AdminPage() {
                   setButtonLoading(prev => ({ ...prev, sync: false }));
                 }
               }}
-                className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
-                {buttonLoading.sync ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                {buttonLoading.sync ? 'Syncing...' : 'Sync Posts'}
+                disabled={buttonLoading.sync}
+                className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[140px] justify-center">
+                {buttonLoading.sync ? <Loader size="small" /> : <><RefreshCw className="w-4 h-4" /> Sync Posts</>}
               </button>
               <button onClick={async () => {
                 if (!window.confirm('Are you sure you want to flush all cache? This will refresh all data from the database.')) return;
+                setButtonLoading(prev => ({ ...prev, flush: true }));
                 try {
                   const resp = await fetch(`${API_BASE}/api/admin/cache/flush`, {
                     method: 'POST',
@@ -1141,18 +1161,31 @@ export default function AdminPage() {
                 } catch (error) {
                   console.error('Cache flush error:', error);
                   toast.error('Could not reach backend');
+                } finally {
+                  setButtonLoading(prev => ({ ...prev, flush: false }));
                 }
               }}
-                className="flex items-center gap-2 px-5 py-2.5 bg-orange-500/20 text-orange-300 border border-orange-500/30 rounded-[20px] text-sm font-medium hover:bg-orange-500/30 transition-all shadow-lg hover:shadow-orange-500/30">
-                <RefreshCw className="w-4 h-4" /> Flush Cache
+                disabled={buttonLoading.flush}
+                className="flex items-center gap-2 px-5 py-2.5 bg-orange-500/20 text-orange-300 border border-orange-500/30 rounded-[20px] text-sm font-medium hover:bg-orange-500/30 transition-all shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 min-w-[140px] justify-center">
+                {buttonLoading.flush ? <Loader size="small" /> : <><RefreshCw className="w-4 h-4" /> Flush Cache</>}
               </button>
-              <button onClick={handleCleanAllTitles}
-                className="flex items-center gap-2 px-5 py-2.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-[20px] text-sm font-medium hover:bg-purple-500/30 transition-all shadow-lg hover:shadow-purple-500/30">
-                <Sparkles className="w-4 h-4" /> Format File Fix
+              <button onClick={async () => {
+                setButtonLoading(prev => ({ ...prev, clean: true }));
+                await handleCleanAllTitles();
+                setButtonLoading(prev => ({ ...prev, clean: false }));
+              }}
+                disabled={buttonLoading.clean}
+                className="flex items-center gap-2 px-5 py-2.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-[20px] text-sm font-medium hover:bg-purple-500/30 transition-all shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 min-w-[140px] justify-center">
+                {buttonLoading.clean ? <Loader size="small" /> : <><Sparkles className="w-4 h-4" /> Format File Fix</>}
               </button>
-              <button onClick={handleDeleteAllPosts}
-                className="flex items-center gap-2 px-5 py-2.5 bg-destructive text-destructive-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity">
-                <Trash2 className="w-4 h-4" /> Delete All
+              <button onClick={async () => {
+                setButtonLoading(prev => ({ ...prev, deleteAll: true }));
+                await handleDeleteAllPosts();
+                setButtonLoading(prev => ({ ...prev, deleteAll: false }));
+              }}
+                disabled={buttonLoading.deleteAll}
+                className="flex items-center gap-2 px-5 py-2.5 bg-destructive text-destructive-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[140px] justify-center">
+                {buttonLoading.deleteAll ? <Loader size="small" /> : <><Trash2 className="w-4 h-4" /> Delete All</>}
               </button>
             </div>
             <div className="bg-card rounded-[12px] border border-border p-4 md:p-5">
@@ -1476,8 +1509,14 @@ export default function AdminPage() {
                   <div className={`absolute top-0.5 w-5 h-5 bg-foreground rounded-full shadow transition-transform ${settings.authEnabled ? 'left-[22px]' : 'left-0.5'}`} />
                 </button>
               </div>
-              <button onClick={handleSaveSettings} className="px-6 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity">
-                Save Settings
+              <button onClick={async () => {
+                setButtonLoading(prev => ({ ...prev, saveSettings: true }));
+                await handleSaveSettings();
+                setButtonLoading(prev => ({ ...prev, saveSettings: false }));
+              }}
+                disabled={buttonLoading.saveSettings}
+                className="px-6 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[140px] flex items-center justify-center">
+                {buttonLoading.saveSettings ? <Loader size="small" /> : 'Save Settings'}
               </button>
             </div>
           </div>
@@ -1552,10 +1591,15 @@ export default function AdminPage() {
               )}
 
               <button 
-                onClick={handleSavePlayerSettings} 
-                className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity"
+                onClick={async () => {
+                  setButtonLoading(prev => ({ ...prev, savePlayer: true }));
+                  await handleSavePlayerSettings();
+                  setButtonLoading(prev => ({ ...prev, savePlayer: false }));
+                }}
+                disabled={buttonLoading.savePlayer}
+                className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center"
               >
-                Save Changes
+                {buttonLoading.savePlayer ? <Loader size="small" /> : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -1627,9 +1671,8 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <button onClick={handleSavePost} disabled={isSaving} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
-          {isSaving && <RefreshCw className="w-4 h-4 animate-spin" />}
-          {isSaving ? 'Saving...' : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Post')}
+        <button onClick={handleSavePost} disabled={isSaving} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 min-h-[40px]">
+          {isSaving ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Post')}
         </button>
       </Modal>
 
@@ -1663,11 +1706,10 @@ export default function AdminPage() {
           } else {
             await handleBulkUpdate();
           }
-        }} disabled={isBulkSaving} className={`w-full mt-4 py-2 rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 ${
+        }} disabled={isBulkSaving} className={`w-full mt-4 py-2 rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 min-h-[40px] ${
           bulkAction === 'delete' ? 'bg-destructive text-white' : 'bg-primary text-primary-foreground'
         }`}>
-          {isBulkSaving && <RefreshCw className="w-4 h-4 animate-spin" />}
-          {isBulkSaving ? 'Applying...' : (bulkAction === 'delete' ? `Delete ${selectedIds.size} Posts` : `Apply to ${selectedIds.size} Posts`)}
+          {isBulkSaving ? <Loader size="small" /> : (bulkAction === 'delete' ? `Delete ${selectedIds.size} Posts` : `Apply to ${selectedIds.size} Posts`)}
         </button>
       </Modal>
 
@@ -1677,8 +1719,14 @@ export default function AdminPage() {
         <Field label="Logo URL" value={form.logo || ''} onChange={v => setForm({ ...form, logo: v })} />
         <Field label="Banner URL" value={form.banner || ''} onChange={v => setForm({ ...form, banner: v })} />
         <TextAreaField label="Description" value={form.description || ''} onChange={v => setForm({ ...form, description: v })} placeholder="Enter video description..." />
-        <button onClick={handleSaveChannel} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90">
-          {modal?.mode === 'edit' ? 'Save Changes' : 'Add Channel'}
+        <button onClick={async () => {
+          setButtonLoading(prev => ({ ...prev, saveChannel: true }));
+          await handleSaveChannel();
+          setButtonLoading(prev => ({ ...prev, saveChannel: false }));
+        }}
+          disabled={buttonLoading.saveChannel}
+          className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center min-h-[40px]">
+          {buttonLoading.saveChannel ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Channel')}
         </button>
       </Modal>
 
@@ -1738,16 +1786,28 @@ export default function AdminPage() {
           </div>
         )}
 
-        <button onClick={handleSaveActor} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90">
-          {modal?.mode === 'edit' ? 'Save Changes' : 'Add Actor'}
+        <button onClick={async () => {
+          setButtonLoading(prev => ({ ...prev, saveActor: true }));
+          await handleSaveActor();
+          setButtonLoading(prev => ({ ...prev, saveActor: false }));
+        }}
+          disabled={buttonLoading.saveActor}
+          className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center min-h-[40px]">
+          {buttonLoading.saveActor ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Actor')}
         </button>
       </Modal>
 
       <Modal open={modal?.type === 'category'} onClose={() => setModal(null)} title={modal?.mode === 'edit' ? 'Edit Category' : 'Add Category'}>
         <Field label="Name" value={form.name || ''} onChange={v => setForm({ ...form, name: v })} />
         <Field label="Icon (emoji)" value={form.icon || ''} onChange={v => setForm({ ...form, icon: v })} placeholder="🎵" />
-        <button onClick={handleSaveCategory} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90">
-          {modal?.mode === 'edit' ? 'Save Changes' : 'Add Category'}
+        <button onClick={async () => {
+          setButtonLoading(prev => ({ ...prev, saveCategory: true }));
+          await handleSaveCategory();
+          setButtonLoading(prev => ({ ...prev, saveCategory: false }));
+        }}
+          disabled={buttonLoading.saveCategory}
+          className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center min-h-[40px]">
+          {buttonLoading.saveCategory ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Category')}
         </button>
       </Modal>
     </div>

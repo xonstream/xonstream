@@ -60,6 +60,94 @@ module.exports = async (fastify, opts) => {
     }
   });
 
+  // NEW: Test Supabase update directly
+  fastify.post('/api/admin/test-db-update', async (request, reply) => {
+    try {
+      const { postId, channelId } = request.body || {};
+      
+      if (!postId) {
+        return reply.status(400).send({
+          success: false,
+          message: 'postId is required'
+        });
+      }
+      
+      logger.info(`=== TEST DB UPDATE ===`);
+      logger.info(`Post ID: ${postId}`);
+      logger.info(`Channel ID: ${channelId}`);
+      
+      // Step 1: Get current value
+      const { data: beforeUpdate, error: fetchError } = await supabase
+        .from('posts')
+        .select('id, title, channel_id')
+        .eq('id', postId)
+        .single();
+      
+      if (fetchError) {
+        return reply.status(404).send({
+          success: false,
+          message: `Post not found: ${fetchError.message}`
+        });
+      }
+      
+      logger.info(`BEFORE UPDATE: channel_id = ${beforeUpdate.channel_id}`);
+      
+      // Step 2: Update
+      const { data: updated, error: updateError } = await supabase
+        .from('posts')
+        .update({ channel_id: channelId || null })
+        .eq('id', postId)
+        .select()
+        .single();
+      
+      if (updateError) {
+        logger.error(`UPDATE ERROR:`, updateError);
+        return reply.status(500).send({
+          success: false,
+          message: `Update failed: ${updateError.message}`,
+          error: updateError
+        });
+      }
+      
+      logger.info(`UPDATE RESPONSE:`, updated);
+      
+      // Step 3: Verify
+      const { data: afterUpdate, error: verifyError } = await supabase
+        .from('posts')
+        .select('id, title, channel_id')
+        .eq('id', postId)
+        .single();
+      
+      if (verifyError) {
+        logger.error(`VERIFY ERROR:`, verifyError);
+      }
+      
+      logger.info(`AFTER UPDATE: channel_id = ${afterUpdate.channel_id}`);
+      
+      const persisted = afterUpdate.channel_id === (channelId || null);
+      
+      logger.info(`PERSISTED: ${persisted}`);
+      
+      return reply.send({
+        success: true,
+        data: {
+          postId,
+          beforeUpdate: beforeUpdate.channel_id,
+          afterUpdate: afterUpdate.channel_id,
+          expectedValue: channelId || null,
+          persisted: persisted,
+          message: persisted ? '✅ Update persisted successfully!' : '❌ Update did NOT persist!'
+        }
+      });
+    } catch (error) {
+      logger.error('Test DB update error', error);
+      return reply.status(500).send({
+        success: false,
+        message: error.message
+      });
+    }
+  });
+
   // Admin-specific endpoint to get all posts with full details
   fastify.get('/api/admin/posts', async (request, reply) => {
     try {
@@ -125,11 +213,18 @@ module.exports = async (fastify, opts) => {
           categories = [post.category.name];
         }
         
+        // DIAGNOSTIC: Log EXACT channel data from Supabase
+        logger.info(`Post "${post.title}" (ID: ${post.id}):`);
+        logger.info(`  - channel_id in DB: ${post.channel_id}`);
+        logger.info(`  - channel.name from join: ${post.channel?.name || 'NULL'}`);
+        logger.info(`  - channel.id from join: ${post.channel?.id || 'NULL'}`);
+        
         return {
           id: post.id,
           title: post.title,
           thumbnail: post.thumbnail || '',
           channelName: post.channel?.name || '',
+          channelId: post.channel_id, // Return the actual channel_id from DB
           categories: categories,
           category: categories[0] || '', // Keep single category for backward compat
           actors: post.post_actors?.map(pa => pa.actor?.name).filter(Boolean) || [],
@@ -239,14 +334,30 @@ module.exports = async (fastify, opts) => {
         .single();
 
       if (postError) {
-        logger.error('Error creating post in Supabase', postError);
+        logger.error('❌ ERROR CREATING POST in Supabase', postError);
         return reply.status(500).send({
           success: false,
           message: 'Failed to create post: ' + postError.message
         });
       }
 
-      logger.info('Post created successfully with ID:', post.id);
+      logger.info('✅ Post created successfully with ID:', post.id);
+      
+      // VERIFICATION: Confirm post was actually created
+      const { data: verifyPost, error: verifyError } = await supabase
+        .from('posts')
+        .select('id, title, channel_id, category_id')
+        .eq('id', post.id)
+        .single();
+      
+      if (verifyError) {
+        logger.error('❌ VERIFICATION FAILED - Post may not have been created:', verifyError);
+      } else if (verifyPost) {
+        logger.info('✅ VERIFICATION SUCCESS - Post exists in database:');
+        logger.info(`  - ID: ${verifyPost.id}`);
+        logger.info(`  - Title: ${verifyPost.title}`);
+        logger.info(`  - channel_id: ${verifyPost.channel_id}`);
+      }
 
       // Insert video sources FIRST
       if (post && videoSources && videoSources.length > 0) {
@@ -330,7 +441,8 @@ module.exports = async (fastify, opts) => {
         logger.warn(`No categoryIds provided for post ${post.id}. categoryIds:`, categoryIds);
       }
 
-      cacheService.invalidateAllPosts();
+      // Invalidate ALL post-related caches including pagination
+      cacheService.invalidateAllPostLists();
       cacheService.invalidateActors();
 
       logger.info('Post creation completed, cache invalidated');
@@ -413,6 +525,10 @@ module.exports = async (fastify, opts) => {
       // Update the posts table ONLY if we have post fields to update
       let updatedPost = null;
       if (hasPostFieldUpdates) {
+        logger.info(`=== ATTEMPTING SUPABASE UPDATE ===`);
+        logger.info(`Post ID: ${id}`);
+        logger.info(`Update fields:`, JSON.stringify(updateFields, null, 2));
+        
         const { data: post, error } = await supabase
           .from('posts')
           .update(updateFields)
@@ -421,7 +537,7 @@ module.exports = async (fastify, opts) => {
           .single();
 
         if (error) {
-          logger.error(`Supabase error updating post ${id}:`, JSON.stringify(error, null, 2));
+          logger.error(`❌ SUPABASE UPDATE ERROR for post ${id}:`, JSON.stringify(error, null, 2));
           logger.error(`Update fields that caused error:`, JSON.stringify(updateFields, null, 2));
           return reply.status(400).send({
             success: false,
@@ -432,15 +548,38 @@ module.exports = async (fastify, opts) => {
         }
         
         if (!post) {
-          logger.error(`No post returned after updating ${id}. Post ID might not exist.`);
+          logger.error(`❌ NO POST RETURNED after updating ${id}. Post ID might not exist.`);
           return reply.status(404).send({
             success: false,
             message: `Post with ID ${id} not found in database`
           });
         }
 
+        // VERIFICATION: Query the database again to confirm the update persisted
+        logger.info(`=== VERIFYING UPDATE PERSISTED ===`);
+        const { data: verifiedPost, error: verifyError } = await supabase
+          .from('posts')
+          .select('id, title, channel_id, category_id')
+          .eq('id', id)
+          .single();
+        
+        if (verifyError) {
+          logger.error(`❌ VERIFICATION QUERY FAILED:`, verifyError);
+        } else if (verifiedPost) {
+          logger.info(`✅ VERIFICATION SUCCESS - Post ${id} in database:`);
+          logger.info(`  - channel_id: ${verifiedPost.channel_id}`);
+          logger.info(`  - Expected channel_id: ${updateFields.channel_id}`);
+          logger.info(`  - Match: ${verifiedPost.channel_id === updateFields.channel_id}`);
+          
+          if (updateFields.channel_id !== undefined && verifiedPost.channel_id !== updateFields.channel_id) {
+            logger.error(`❌ CRITICAL: Update did NOT persist! Expected ${updateFields.channel_id}, got ${verifiedPost.channel_id}`);
+            logger.error(`This suggests a database constraint or trigger is reverting the change.`);
+          }
+        }
+
         updatedPost = post;
-        logger.info(`Successfully updated post ${id}`);
+        logger.info(`✅ Successfully updated post ${id}`);
+        logger.info(`=== UPDATE COMPLETE ===`);
       } else {
         // Fetch the post anyway for the response
         const { data: post, error } = await supabase
@@ -617,11 +756,18 @@ module.exports = async (fastify, opts) => {
         }
       }
 
-      cacheService.invalidatePostCache(id);
-      cacheService.invalidateActors();
-
-      // Invalidate cache after successful update
-      cacheService.invalidateAllPosts();
+      // Invalidate ALL post-related caches including pagination
+      cacheService.invalidateAllPostLists();
+      
+      // If channel was changed, invalidate ALL channel post caches AND rebuild from database
+      if (updateData.channel !== undefined) {
+        logger.info(`🔄 CHANNEL CHANGED - Forcing complete cache flush and rebuild...`);
+        cacheService.invalidateAllChannelPosts();
+        cacheService.flushAll();
+        await cacheService.rebuildFromDB();
+        logger.info(`✅ Cache flushed and rebuilt with fresh data from Supabase`);
+      }
+      
       cacheService.invalidateActors();
       
       logger.info(`Post ${id} update completed, cache invalidated`);
@@ -660,7 +806,8 @@ module.exports = async (fastify, opts) => {
         });
       }
 
-      cacheService.invalidatePostCache(id);
+      // Invalidate ALL post-related caches including pagination
+      cacheService.invalidateAllPostLists();
 
       return reply.send({
         success: true
@@ -893,16 +1040,41 @@ module.exports = async (fastify, opts) => {
           logger.info(`Will update post_categories: ${setCategories && setCategories.length > 0}`);
 
           if (Object.keys(updateFields).length > 0) {
-            const { error } = await supabase
+            logger.info(`=== BULK UPDATE ATTEMPT ===`);
+            logger.info(`Post ID: ${postId}`);
+            logger.info(`Update fields:`, JSON.stringify(updateFields, null, 2));
+            
+            const { error, data: updateResult } = await supabase
               .from('posts')
               .update(updateFields)
               .eq('id', postId);
             
             if (error) {
-              logger.error(`Error updating post ${postId}`, error);
+              logger.error(`❌ BULK UPDATE ERROR for post ${postId}:`, JSON.stringify(error, null, 2));
               errors.push({ postId, error: error.message });
               errorCount++;
             } else {
+              logger.info(`✅ Supabase update executed for post ${postId}`);
+              
+              // VERIFICATION: Query to confirm update persisted
+              const { data: verifiedPost, error: verifyError } = await supabase
+                .from('posts')
+                .select('id, channel_id, category_id')
+                .eq('id', postId)
+                .single();
+              
+              if (verifyError) {
+                logger.error(`❌ Verification query failed for post ${postId}:`, verifyError);
+              } else if (verifiedPost) {
+                logger.info(`✅ VERIFIED - Post ${postId} in database:`);
+                logger.info(`  - channel_id: ${verifiedPost.channel_id} (expected: ${updateFields.channel_id})`);
+                logger.info(`  - Match: ${verifiedPost.channel_id === updateFields.channel_id}`);
+                
+                if (updateFields.channel_id !== undefined && verifiedPost.channel_id !== updateFields.channel_id) {
+                  logger.error(`❌ CRITICAL: Bulk update did NOT persist for post ${postId}!`);
+                }
+              }
+              
               updatedCount++;
               
               // If using multiple categories, insert into post_categories junction table
@@ -941,8 +1113,20 @@ module.exports = async (fastify, opts) => {
         }
       }
 
-      cacheService.invalidateAllPosts();
+      // Invalidate ALL post-related caches including pagination
+      cacheService.invalidateAllPostLists();
+      
+      // If channel was changed, invalidate ALL channel post caches AND rebuild from database
+      if (setChannel !== undefined) {
+        logger.info('🔄 CHANNEL CHANGED IN BULK - Forcing complete cache flush and rebuild...');
+        cacheService.invalidateAllChannelPosts();
+        cacheService.flushAll();
+        await cacheService.rebuildFromDB();
+        logger.info('✅ Cache flushed and rebuilt with fresh data from Supabase');
+      }
+      
       cacheService.invalidateActors();
+      cacheService.invalidateChannels();
 
       logger.info(`Bulk edit completed: ${updatedCount} updated, ${errorCount} errors`);
 
@@ -1433,4 +1617,172 @@ module.exports = async (fastify, opts) => {
       });
     }
   });
+
+  // Admin endpoint to find posts with incorrect channel_id
+  fastify.get('/api/admin/channels/invalid-posts', async (request, reply) => {
+    try {
+      // Get all channels
+      const { data: channels } = await supabase
+        .from('channels')
+        .select('id');
+      
+      const validChannelIds = channels ? channels.map(c => c.id) : [];
+      
+      // Get all posts with channel info
+      const { data: posts, error } = await supabase
+        .from('posts')
+        .select('id, title, channel_id, channel:channels(id, name)')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        logger.error('Error fetching posts:', error);
+        return reply.status(500).send({
+          success: false,
+          message: 'Failed to fetch posts'
+        });
+      }
+      
+      // Find posts with invalid channel_id
+      const invalidPosts = posts.filter(p => {
+        // Posts with null channel_id are valid (uncategorized)
+        if (p.channel_id === null) return false;
+        
+        // Posts with channel_id not in valid channels list are invalid
+        return !validChannelIds.includes(p.channel_id);
+      });
+      
+      const postsWithNullChannel = posts.filter(p => p.channel_id === null);
+      
+      return reply.send({
+        success: true,
+        data: {
+          totalPosts: posts.length,
+          postsWithValidChannel: posts.length - postsWithNullChannel.length - invalidPosts.length,
+          postsWithNullChannel: postsWithNullChannel.length,
+          invalidChannelId: invalidPosts.length,
+          invalidPosts: invalidPosts.map(p => ({
+            id: p.id,
+            title: p.title,
+            channel_id: p.channel_id,
+            channelName: p.channel?.name || 'NULL'
+          })),
+          postsWithNullChannel: postsWithNullChannel.map(p => ({
+            id: p.id,
+            title: p.title
+          }))
+        }
+      });
+    } catch (error) {
+      logger.error('Error finding invalid posts:', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to find invalid posts'
+      });
+    }
+  });
+
+  // Admin endpoint to fix channel_id for posts
+  fastify.post('/api/admin/channels/fix-posts', async (request, reply) => {
+    try {
+      const { dryRun = true, sourceChannelId, targetChannelId, postIds } = request.body || {};
+      
+      logger.info('=== FIX CHANNEL POSTS ===');
+      logger.info('Dry run:', dryRun);
+      logger.info('Source channel:', sourceChannelId);
+      logger.info('Target channel:', targetChannelId);
+      
+      let query = supabase.from('posts').select('id, title, channel_id, channel:channels(id, name)');
+      
+      if (sourceChannelId) {
+        query = query.eq('channel_id', sourceChannelId);
+      }
+      
+      if (postIds && Array.isArray(postIds) && postIds.length > 0) {
+        query = query.in('id', postIds);
+      }
+      
+      const { data: posts, error } = await query;
+      
+      if (error) {
+        logger.error('Error fetching posts:', error);
+        return reply.status(500).send({
+          success: false,
+          message: 'Failed to fetch posts'
+        });
+      }
+      
+      if (!posts || posts.length === 0) {
+        return reply.send({
+          success: true,
+          data: {
+            postsFound: 0,
+            message: 'No posts found matching criteria'
+          }
+        });
+      }
+      
+      logger.info('Posts found:', posts.length);
+      
+      // If dry run, just return what would be updated
+      if (dryRun || !targetChannelId) {
+        const postsWithDetails = posts.map(p => ({
+          id: p.id,
+          title: p.title,
+          currentChannelId: p.channel_id,
+          currentChannelName: p.channel?.name || 'NULL',
+          targetChannelId: targetChannelId,
+          wouldUpdate: targetChannelId && p.channel_id !== targetChannelId
+        }));
+        
+        return reply.send({
+          success: true,
+          data: {
+            postsFound: posts.length,
+            dryRun: true,
+            posts: postsWithDetails
+          }
+        });
+      }
+      
+      // Actually update the posts
+      const { error: updateError } = await supabase
+        .from('posts')
+        .update({ channel_id: targetChannelId })
+        .in('id', posts.map(p => p.id));
+      
+      if (updateError) {
+        logger.error('Error updating posts:', updateError);
+        return reply.status(500).send({
+          success: false,
+          message: 'Failed to update posts: ' + updateError.message
+        });
+      }
+      
+      // Invalidate all caches
+      cacheService.invalidateAllPostLists();
+      cacheService.invalidateAllChannelPosts();
+      cacheService.flushAll();
+      await cacheService.rebuildFromDB();
+      
+      logger.info('Successfully updated', posts.length, 'posts');
+      logger.info('Cache invalidated and rebuilt');
+      
+      return reply.send({
+        success: true,
+        message: 'Updated ' + posts.length + ' posts',
+        data: {
+          postsFound: posts.length,
+          postsUpdated: posts.length,
+          targetChannelId: targetChannelId
+        }
+      });
+    } catch (error) {
+      logger.error('Error in fix channel posts:', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to fix channel posts'
+      });
+    }
+  });
 };
+

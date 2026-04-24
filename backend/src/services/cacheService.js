@@ -138,6 +138,36 @@ class CacheService {
     logger.info('Invalidated categories cache');
   }
 
+  invalidateAllPostLists() {
+    // Delete ALL pagination caches (posts:page:X:perPage:Y:category:Z)
+    // Delete ALL individual post caches (post:ID)
+    // Delete ALL channel posts caches (channel_posts:ID)
+    // Delete ALL actor posts caches (actor_posts:ID)
+    // Delete latest_posts cache
+    const keys = this.cache.keys();
+    const postListKeys = keys.filter(key => 
+      key.startsWith('posts:page:') || 
+      key.startsWith('post:') || 
+      key.startsWith('channel_posts:') || 
+      key.startsWith('actor_posts:') ||
+      key === 'latest_posts'
+    );
+    postListKeys.forEach(key => this.del(key));
+    logger.info('Invalidated all post list caches', { count: postListKeys.length, keys: postListKeys.slice(0, 10) });
+  }
+
+  invalidateAllChannelPosts() {
+    // Delete ALL channel-specific post caches (channel_posts_v2:ID:page:X)
+    // This is critical when channel assignments change
+    const keys = this.cache.keys();
+    const channelPostKeys = keys.filter(key => 
+      key.startsWith('channel_posts_v2:') || 
+      key.startsWith('channel_posts:')
+    );
+    channelPostKeys.forEach(key => this.del(key));
+    logger.info('Invalidated all channel post caches', { count: channelPostKeys.length, keys: channelPostKeys.slice(0, 10) });
+  }
+
   invalidateVideoCache(platform, videoId) {
     this.del(`video:${platform}:${videoId}`);
     this.del(`video:${platform}:thumb:${videoId}`);

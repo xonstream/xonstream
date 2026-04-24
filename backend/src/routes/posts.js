@@ -319,6 +319,11 @@ module.exports = async (fastify, opts) => {
           getPostPreview(post)
         ]);
         
+        // DIAGNOSTIC: Log EXACT channel data from Supabase
+        logger.info(`Public Post "${post.title}" (ID: ${post.id}):`);
+        logger.info(`  - channel_id in DB: ${post.channel_id}`);
+        logger.info(`  - channel.name from join: ${post.channel?.name || 'NULL'}`);
+        
         return {
           id: post.id,
           title: post.title,
@@ -326,6 +331,7 @@ module.exports = async (fastify, opts) => {
           thumbnail: thumbnail,
           previewUrl: previewUrl,
           channelName: post.channel?.name || '',
+          channelId: post.channel_id, // Return the actual channel_id from DB
           categories: categories,
           category: categories[0] || '', // First category for backward compatibility
           actors: (post.post_actors || []).map(pa => pa.actor?.name || '').filter(name => name),
