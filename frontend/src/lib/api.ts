@@ -1,15 +1,48 @@
 import type { Post, VideoLink, VideoSource, PaginatedResponse, Channel, Actor } from './types';
 
-// Backend API URL from environment variable
-// This MUST be set in .env file - no hardcoded fallbacks for security
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Automatic environment detection for backend API URL
+// This detects where the frontend is running and selects the correct backend
+const getApiBaseUrl = (): string => {
+  // 1. Check if environment variable is explicitly set (highest priority)
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl) {
+    return envUrl;
+  }
 
-if (!API_BASE_URL) {
-  console.error('VITE_API_BASE_URL is not set in environment variables');
+  // 2. Auto-detect based on hostname (runtime detection)
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    
+    // Localhost development
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:7860';
+    }
+    
+    // Cloudflare Pages production (xonstream.pages.dev)
+    // Or any other production domain
+    if (hostname.includes('pages.dev') || hostname.includes('cloudflare')) {
+      return 'https://xonstream-xonstream.hf.space';
+    }
+    
+    // Hugging Face Spaces (if frontend is also hosted there)
+    if (hostname.includes('hf.space')) {
+      return 'https://xonstream-xonstream.hf.space';
+    }
+  }
+
+  // 3. Fallback: try to use environment variable or default to localhost
+  return envUrl || 'http://localhost:7860';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Log which backend URL is being used (helpful for debugging)
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  console.log(`[API] Using backend URL: ${API_BASE_URL}`);
 }
 
-// Export API base - will be undefined if env var is not set
-export const API_BASE = API_BASE_URL || '';
+// Export API base
+export const API_BASE = API_BASE_URL;
 
 // Admin authentication helpers
 export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string }> {
