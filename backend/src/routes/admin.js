@@ -151,6 +151,8 @@ module.exports = async (fastify, opts) => {
   // Admin-specific endpoint to get all posts with full details
   fastify.get('/api/admin/posts', async (request, reply) => {
     try {
+      logger.info('[ADMIN POSTS] Fetching all posts for admin dashboard');
+      
       // Fetch posts with all relations (excluding category - we get it from post_categories)
       let { data: posts, error } = await supabase
         .from('posts')
@@ -163,10 +165,20 @@ module.exports = async (fastify, opts) => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        logger.error('Error fetching admin posts', error);
+        logger.error('[ADMIN POSTS] Error fetching posts from Supabase', error);
         return reply.status(500).send({
           success: false,
           message: 'Failed to fetch posts: ' + error.message
+        });
+      }
+      
+      logger.info(`[ADMIN POSTS] Fetched ${posts?.length || 0} posts from database`);
+      
+      if (!posts || posts.length === 0) {
+        logger.warn('[ADMIN POSTS] No posts found in database');
+        return reply.send({
+          success: true,
+          data: []
         });
       }
 
@@ -236,12 +248,14 @@ module.exports = async (fastify, opts) => {
         };
       });
 
+      logger.info(`[ADMIN POSTS] Returning ${formattedPosts.length} posts to frontend`);
+      
       return reply.send({
         success: true,
         data: formattedPosts
       });
     } catch (error) {
-      logger.error('Error fetching admin posts', error);
+      logger.error('[ADMIN POSTS] Unexpected error fetching admin posts', error);
       return reply.status(500).send({
         success: false,
         message: 'Failed to fetch posts: ' + (error.message || 'Unknown error')

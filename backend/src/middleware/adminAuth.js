@@ -15,12 +15,16 @@ const adminAuth = async (fastify) => {
       await request.jwtVerify();
 
       if (!request.user || request.user.username !== env.ADMIN_USERNAME) {
+        logger.warn('[ADMIN AUTH] Invalid user in token:', request.user);
         return reply.status(401).send({
           success: false,
           message: 'Unauthorized'
         });
       }
+      
+      logger.info('[ADMIN AUTH] Authentication successful for:', request.user.username);
     } catch (error) {
+      logger.warn('[ADMIN AUTH] JWT verification failed:', error.message);
       return reply.status(401).send({
         success: false,
         message: 'Unauthorized'
@@ -32,7 +36,10 @@ const adminAuth = async (fastify) => {
     try {
       const { username, password } = request.body || {};
 
+      logger.info(`[ADMIN LOGIN] Login attempt for username: ${username}`);
+
       if (!username || !password) {
+        logger.warn('[ADMIN LOGIN] Missing username or password');
         return reply.status(400).send({
           success: false,
           message: 'Username and password are required'
@@ -40,11 +47,14 @@ const adminAuth = async (fastify) => {
       }
 
       if (username !== env.ADMIN_USERNAME || password !== env.ADMIN_PASSWORD) {
+        logger.warn('[ADMIN LOGIN] Invalid credentials for username:', username);
         return reply.status(401).send({
           success: false,
           message: 'Invalid credentials'
         });
       }
+
+      logger.info('[ADMIN LOGIN] Login successful, creating token');
 
       const token = fastify.jwt.sign(
         { username },
@@ -54,16 +64,19 @@ const adminAuth = async (fastify) => {
       reply.setCookie('admin_session', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: 'none', // Required for cross-origin cookies
         maxAge: 24 * 60 * 60 * 1000,
         path: '/'
       });
+
+      logger.info('[ADMIN LOGIN] Cookie set successfully');
 
       return reply.send({
         success: true,
         message: 'Login successful'
       });
     } catch (error) {
+      logger.error('[ADMIN LOGIN] Login failed:', error);
       return reply.status(500).send({
         success: false,
         message: 'Login failed'

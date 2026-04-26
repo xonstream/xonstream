@@ -141,6 +141,8 @@ const allowedOrigins = [
   /^https:\/\/.*\.pages\.cloudflare$/, // Cloudflare Pages custom domains
   /^https:\/\/.*\.qzz\.io$/,
   /^https:\/\/.*\.hf\.space$/,         // Hugging Face Spaces
+  // Add CORS_ORIGIN from environment variable if set
+  ...(env.CORS_ORIGIN ? [env.CORS_ORIGIN] : []),
   // Add your production Cloudflare Pages domain here:
   // 'https://your-domain.com'
 ];
@@ -149,6 +151,10 @@ const startServer = async () => {
   try {
     logger.info('Starting XonStream Backend...');
     logger.info('Environment loaded successfully');
+    
+    // Log CORS configuration for debugging
+    logger.info(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
+    logger.info(`CORS_ORIGIN from env: ${env.CORS_ORIGIN || 'not set'}`);
 
     logger.info('Supabase configuration loaded');
 

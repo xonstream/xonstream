@@ -460,7 +460,13 @@ export default function AdminPage() {
   const fetchBackendPosts = async () => {
     setLoadingBackend(true);
     try {
+      console.log('[ADMIN] Fetching posts from backend...');
       const j = await fetchAdminPosts();
+      
+      console.log('[ADMIN] Response received:', j);
+      console.log('[ADMIN] success:', j.success);
+      console.log('[ADMIN] data:', j.data);
+      console.log('[ADMIN] message:', j.message);
       
       if (j.success && j.data) {
         // DIAGNOSTIC: Log EXACT data received from API
@@ -484,12 +490,13 @@ export default function AdminPage() {
         setBackendPosts(cleaned);
         toast.success(`Loaded ${cleaned.length} posts`);
       } else {
-        toast.error('Failed to load posts: No data returned');
+        console.error('[ADMIN] Failed to load posts - Response:', j);
+        toast.error(`Failed to load posts: ${j.message || 'No data returned'}`);
         setBackendPosts([]);
       }
     } catch (err) {
-      console.error('Failed to fetch posts:', err);
-      toast.error('Failed to load posts from backend');
+      console.error('[ADMIN] Failed to fetch posts:', err);
+      toast.error(`Failed to load posts from backend: ${err.message || 'Unknown error'}`);
       setBackendPosts([]);
     } finally {
       setLoadingBackend(false);

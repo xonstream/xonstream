@@ -201,6 +201,9 @@ module.exports = async (fastify, opts) => {
       }
 
       logger.info(`[POSTS] Cache miss, fetching from database`);
+      
+      // Log Supabase connection status
+      logger.info('[POSTS] Supabase client configured:', supabase ? 'YES' : 'NO');
 
       const skip = (page - 1) * perPage;
 

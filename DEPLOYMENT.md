@@ -108,14 +108,34 @@ XON STREAM is a premium adult video streaming platform with:
 3. **Set Environment Variables (Secrets)**
    - Go to your Space Settings
    - Navigate to "Variables and Secrets"
-   - Add these secrets:
+   - Add these secrets (ALL are required):
      ```
-     SUPABASE_URL=your_supabase_project_url
-     SUPABASE_KEY=your_supabase_api_key
-     PORT=3000
+     # Server Configuration
+     PORT=7860
      NODE_ENV=production
+     
+     # Supabase Database (REQUIRED)
+     SUPABASE_URL=https://your-project.supabase.co
+     SUPABASE_ANON_KEY=your_anon_key
+     SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+     
+     # Streamtape API (REQUIRED)
+     STREAMTAPE_LOGIN=your_streamtape_login
+     STREAMTAPE_KEY=your_streamtape_key
+     
+     # SeekStreaming API (REQUIRED)
+     SEEKSTREAMING_KEY=your_seekstreaming_key
+     SEEKSTREAMING_PLAYER_DOMAIN=xonstream.seeks.cloud
+     
+     # Admin Panel (REQUIRED)
+     ADMIN_USERNAME=admin
+     ADMIN_PASSWORD=your_secure_password
+     ADMIN_SECRET=your_jwt_secret_key
+     
+     # CORS (Optional - regex patterns already allow *.hf.space)
+     CORS_ORIGIN=https://xonstream.pages.dev
      ```
-   - Mark sensitive values as "Secret"
+   - Mark ALL sensitive values as "Secret"
 
 4. **Automatic Deployment**
    - Hugging Face will automatically detect the Dockerfile
@@ -186,16 +206,51 @@ curl http://localhost:3000/health
 
 ### Frontend (Cloudflare Pages)
 No sensitive environment variables needed for frontend.
+The backend API URL is auto-detected based on hostname.
 
 ### Backend (Hugging Face Spaces)
 
-Create a `.env` file locally with:
-```env
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_KEY=your_supabase_api_key
-PORT=3000
-NODE_ENV=production
+**CRITICAL: ALL environment variables below MUST be set in Hugging Face Space Secrets**
+
+If ANY variable is missing, the backend will fail to start with this error:
 ```
+[ENV ERROR] Missing required environment variables: VARIABLE_NAME
+```
+
+Create these secrets in Hugging Face Space Settings > Variables and Secrets:
+
+```env
+# Server Configuration
+PORT=7860                          # Hugging Face default port
+NODE_ENV=production
+
+# Supabase Database (REQUIRED)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=eyJhbGc...       # From Supabase Dashboard > Settings > API
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGc... # From Supabase Dashboard > Settings > API
+
+# Streamtape API (REQUIRED)
+STREAMTAPE_LOGIN=your_login
+STREAMTAPE_KEY=your_key
+
+# SeekStreaming API (REQUIRED)
+SEEKSTREAMING_KEY=your_key
+SEEKSTREAMING_PLAYER_DOMAIN=xonstream.seeks.cloud
+
+# Admin Panel (REQUIRED)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your_secure_password
+ADMIN_SECRET=your_jwt_secret_key   # Random secure string
+
+# CORS (Optional)
+CORS_ORIGIN=https://xonstream.pages.dev
+```
+
+**How to get Supabase credentials:**
+1. Go to https://supabase.com/dashboard
+2. Select your project
+3. Go to Settings > API
+4. Copy the Project URL and keys
 
 **Never commit .env files to version control!**
 
@@ -225,6 +280,127 @@ NODE_ENV=production
 - [ ] Test with Google Rich Results Test: https://search.google.com/test/rich-results
 - [ ] Check meta tags with Facebook Debugger: https://developers.facebook.com/tools/debug/
 - [ ] Verify with Twitter Card Validator: https://cards-dev.twitter.com/validator
+
+---
+
+## TROUBLESHOOTING
+
+### Posts Not Loading on Hugging Face (But Working on Localhost)
+
+**Symptom:** Posts display correctly on `localhost` but show empty/nothing on Hugging Face deployment.
+
+**Most Common Causes:**
+
+#### 1. Missing Environment Variables (90% of cases)
+
+**Check:** Go to your Hugging Face Space > Logs tab
+
+**If you see this error:**
+```
+[ENV ERROR] Missing required environment variables: SUPABASE_URL, STREAMTAPE_LOGIN, etc.
+```
+
+**Solution:**
+1. Go to your Hugging Face Space Settings
+2. Navigate to "Variables and Secrets"
+3. Add ALL required environment variables (see list above)
+4. Rebuild the Space (Settings > Factory Rebuild)
+
+**Important:** The backend will NOT start if ANY required variable is missing.
+
+#### 2. Backend Not Starting
+
+**Check:** Go to your Hugging Face Space > Logs tab
+
+**If the logs show:**
+- No output at all
+- "Starting XonStream Backend..." but then stops
+- Error messages about missing modules
+
+**Solution:**
+1. Check that all dependencies are installed (package.json exists)
+2. Verify Dockerfile is present and correct
+3. Check that PORT=7860 is set (Hugging Face requirement)
+4. Factory Rebuild the Space
+
+#### 3. CORS Errors
+
+**Check:** Open browser console (F12) on your frontend
+
+**If you see:**
+```
+Access to fetch at 'https://xonstream-xonstream.hf.space/api/posts' from origin 'https://xonstream.pages.dev' has been blocked by CORS policy
+```
+
+**Solution:**
+The backend already allows all `*.hf.space` and `*.pages.dev` origins via regex patterns. If you're using a custom domain, add it to CORS_ORIGIN environment variable.
+
+#### 4. Supabase Connection Issues
+
+**Check:** Backend logs for Supabase errors
+
+**If you see:**
+```
+Error fetching posts from Supabase
+Invalid API key
+Could not find the table
+```
+
+**Solution:**
+1. Verify SUPABASE_URL is correct (should be `https://xxxxx.supabase.co`)
+2. Verify SUPABASE_SERVICE_ROLE_KEY is correct (not the anon key)
+3. Check that Supabase tables exist: `posts`, `channels`, `actors`, `categories`, `post_categories`
+4. Test Supabase connection in Supabase Dashboard > SQL Editor
+
+#### 5. Frontend Pointing to Wrong Backend URL
+
+**Check:** Open browser console (F12) on your frontend
+
+**Look for:**
+```
+[API] Using backend URL: http://localhost:7860  ← WRONG for production!
+```
+
+**Should see:**
+```
+[API] Using backend URL: https://xonstream-xonstream.hf.space  ← CORRECT
+```
+
+**Solution:**
+The frontend auto-detects the backend URL based on hostname:
+- `localhost` → `http://localhost:7860`
+- `*.pages.dev` or `*.hf.space` → `https://xonstream-xonstream.hf.space`
+
+If auto-detection fails, set `VITE_API_BASE_URL` in Cloudflare Pages environment variables.
+
+### Quick Diagnostic Checklist
+
+Run through these steps in order:
+
+1. ✅ **Check Hugging Face Space Logs**
+   - Look for startup errors
+   - Verify "Server running on port 7860" message appears
+   
+2. ✅ **Test Health Endpoint**
+   - Open: `https://your-space.hf.space/health`
+   - Should return: `{"status":"healthy",...}`
+   - If this fails, backend is not running
+
+3. ✅ **Test Posts API Directly**
+   - Open: `https://your-space.hf.space/api/posts`
+   - Should return: `{"success":true,"data":[...]}`
+   - If this fails, check Supabase connection
+
+4. ✅ **Check Frontend Console**
+   - Open browser DevTools (F12)
+   - Look for CORS errors
+   - Look for failed network requests
+   - Check what backend URL is being used
+
+5. ✅ **Verify Environment Variables**
+   - Go to Hugging Face Space Settings > Variables and Secrets
+   - Count: Should have at least 11 variables set
+   - Names must match EXACTLY (case-sensitive)
 
 ---
 
