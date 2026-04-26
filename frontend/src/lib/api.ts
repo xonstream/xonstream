@@ -107,11 +107,24 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 // ─── Posts ────────────────────────────────────────────────────────────────────
 
 export async function fetchAdminPosts(): Promise<{ success: boolean; data: Post[] }> {
+  // Get token from localStorage
+  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  
+  console.log('[API] Fetching admin posts with token:', token ? 'YES' : 'NO');
+  
   // Use dedicated admin endpoint to get all posts with full details
   const res = await fetch(`${API_BASE}/api/admin/posts`, {
     credentials: 'include',
+    headers: token ? {
+      'Authorization': `Bearer ${token}`
+    } : {},
   });
+  
+  console.log('[API] Admin posts response status:', res.status);
+  
   const json = await res.json();
+  console.log('[API] Admin posts response:', json);
+  
   return json;
 }
 
