@@ -1,5 +1,6 @@
 const jwt = require('@fastify/jwt');
 const env = require('../config/env');
+const logger = require('../utils/logger');
 
 const adminAuth = async (fastify) => {
   fastify.register(jwt, {
