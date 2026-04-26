@@ -134,8 +134,13 @@ const migrateCategories = async () => {
 const allowedOrigins = [
   'http://localhost:8080',
   'http://localhost:3000',
-  /^https:\/\/.*\.pages\.dev$/,
-  /^https:\/\/.*\.qzz\.io$/
+  'http://localhost:7860',
+  /^https:\/\/.*\.pages\.dev$/,        // Cloudflare Pages preview URLs
+  /^https:\/\/.*\.pages\.cloudflare$/, // Cloudflare Pages custom domains
+  /^https:\/\/.*\.qzz\.io$/,
+  /^https:\/\/.*\.hf\.space$/,         // Hugging Face Spaces
+  // Add your production Cloudflare Pages domain here:
+  // 'https://your-domain.com'
 ];
 
 const startServer = async () => {
@@ -195,6 +200,30 @@ const startServer = async () => {
 
     await fastify.register(multipart);
 
+    // Health check endpoint for Docker and Hugging Face Spaces
+    // Simple check - just verify the server is running and responsive
+    fastify.get('/health', async (request, reply) => {
+      try {
+        return reply.code(200).send({
+          status: 'healthy',
+          uptime: process.uptime(),
+          timestamp: new Date().toISOString(),
+          memory: {
+            heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+            rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB'
+          }
+        });
+      } catch (error) {
+        logger.error('Health check error', error);
+        return reply.code(503).send({
+          status: 'unhealthy',
+          message: 'Health check failed',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     await adminAuth(fastify);
 
     await fastify.register(postsRoutes);
@@ -208,12 +237,17 @@ const startServer = async () => {
     fastify.setErrorHandler(errorHandler);
 
     // Run automatic category migration before warming cache
+    logger.info('Starting category migration...');
     await migrateCategories();
+    logger.info('Category migration completed');
 
+    logger.info('Starting cache warmup...');
     await cacheService.warmCache();
+    logger.info('Cache warmup completed');
 
     ramMonitor.start();
 
+    logger.info(`Starting server on port ${env.PORT}...`);
     await fastify.listen({
       port: env.PORT,
       host: '0.0.0.0'

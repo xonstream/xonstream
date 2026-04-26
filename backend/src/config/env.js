@@ -24,7 +24,7 @@ if (missingVars.length > 0) {
 }
 
 module.exports = {
-  PORT: parseInt(process.env.PORT, 10) || 3000,
+  PORT: parseInt(process.env.PORT, 10) || 7860, // Hugging Face Spaces default port
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   STREAMTAPE_LOGIN: process.env.STREAMTAPE_LOGIN,

@@ -1,3 +1,13 @@
+---
+title: XON STREAM Backend
+emoji: 🎬
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # XON STREAM Backend
 
 Backend API service for XON STREAM video streaming platform.
@@ -20,7 +30,7 @@ Backend API service for XON STREAM video streaming platform.
    In your Space settings, add these secrets:
    - `SUPABASE_URL` - Your Supabase project URL
    - `SUPABASE_KEY` - Your Supabase API key
-   - `PORT` - Set to 3000 (or leave default)
+   - `PORT` - Set to 7860 (Hugging Face Spaces default)
    - Any other variables from `.env.example`
 
 3. **Push to Hugging Face**
