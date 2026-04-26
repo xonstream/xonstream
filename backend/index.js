@@ -135,6 +135,8 @@ const allowedOrigins = [
   'http://localhost:8080',
   'http://localhost:3000',
   'http://localhost:7860',
+  'http://localhost:5173',  // Vite dev server
+  'https://xonstream.pages.dev',  // Cloudflare Pages production
   /^https:\/\/.*\.pages\.dev$/,        // Cloudflare Pages preview URLs
   /^https:\/\/.*\.pages\.cloudflare$/, // Cloudflare Pages custom domains
   /^https:\/\/.*\.qzz\.io$/,
@@ -152,6 +154,7 @@ const startServer = async () => {
 
     await fastify.register(cors, {
       origin: (origin, cb) => {
+        // Allow requests with no origin (like mobile apps or curl)
         if (!origin) {
           return cb(null, true);
         }
@@ -167,11 +170,14 @@ const startServer = async () => {
           return cb(null, true);
         }
 
+        logger.warn(`CORS blocked origin: ${origin}`);
         cb(new Error('Not allowed by CORS'), false);
       },
       credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+      exposedHeaders: ['Content-Range', 'X-Content-Range'],
+      maxAge: 600 // Cache preflight request for 10 minutes
     });
 
     await fastify.register(helmet, {
