@@ -45,7 +45,7 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
 export const API_BASE = API_BASE_URL;
 
 // Admin authentication helpers
-export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string }> {
+export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string; token?: string }> {
   try {
     console.log('[ADMIN LOGIN] Attempting login to:', `${API_BASE}/api/admin/login`);
     console.log('[ADMIN LOGIN] Username:', username);

@@ -13,7 +13,15 @@ const adminAuth = async (fastify) => {
 
   fastify.decorate('authenticateAdmin', async (request, reply) => {
     try {
-      await request.jwtVerify();
+      // Try to get token from Authorization header first, then from cookie
+      const authHeader = request.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        request.user = fastify.jwt.verify(token);
+      } else {
+        // Fallback to cookie
+        await request.jwtVerify();
+      }
 
       if (!request.user || request.user.username !== env.ADMIN_USERNAME) {
         logger.warn('[ADMIN AUTH] Invalid user in token:', request.user);
@@ -78,14 +86,17 @@ const adminAuth = async (fastify) => {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'none', // Required for cross-origin cookies
         maxAge: 24 * 60 * 60 * 1000,
-        path: '/'
+        path: '/',
+        domain: '.hf.space' // Allow cookie to be sent from any hf.space subdomain
       });
 
       logger.info('[ADMIN LOGIN] Cookie set successfully');
 
+      // Also return token in response for header-based auth
       return reply.send({
         success: true,
-        message: 'Login successful'
+        message: 'Login successful',
+        token: token // Return token for header-based authentication
       });
     } catch (error) {
       logger.error('[ADMIN LOGIN] Login failed:', error);
