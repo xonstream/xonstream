@@ -37,6 +37,9 @@ const adminAuth = async (fastify) => {
       const { username, password } = request.body || {};
 
       logger.info(`[ADMIN LOGIN] Login attempt for username: ${username}`);
+      logger.info(`[ADMIN LOGIN] Environment ADMIN_USERNAME: ${env.ADMIN_USERNAME}`);
+      logger.info(`[ADMIN LOGIN] Environment ADMIN_PASSWORD exists: ${!!env.ADMIN_PASSWORD}`);
+      logger.info(`[ADMIN LOGIN] Environment ADMIN_PASSWORD length: ${env.ADMIN_PASSWORD ? env.ADMIN_PASSWORD.length : 0}`);
 
       if (!username || !password) {
         logger.warn('[ADMIN LOGIN] Missing username or password');
@@ -46,8 +49,16 @@ const adminAuth = async (fastify) => {
         });
       }
 
-      if (username !== env.ADMIN_USERNAME || password !== env.ADMIN_PASSWORD) {
-        logger.warn('[ADMIN LOGIN] Invalid credentials for username:', username);
+      // Debug: Log comparison (without exposing actual password)
+      const usernameMatch = username === env.ADMIN_USERNAME;
+      const passwordMatch = password === env.ADMIN_PASSWORD;
+      
+      logger.info(`[ADMIN LOGIN] Username match: ${usernameMatch}`);
+      logger.info(`[ADMIN LOGIN] Password match: ${passwordMatch}`);
+      logger.info(`[ADMIN LOGIN] Provided password length: ${password.length}`);
+
+      if (!usernameMatch || !passwordMatch) {
+        logger.warn(`[ADMIN LOGIN] Invalid credentials - Username match: ${usernameMatch}, Password match: ${passwordMatch}`);
         return reply.status(401).send({
           success: false,
           message: 'Invalid credentials'
