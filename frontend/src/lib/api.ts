@@ -47,15 +47,26 @@ export const API_BASE = API_BASE_URL;
 // Admin authentication helpers
 export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string }> {
   try {
+    console.log('[ADMIN LOGIN] Attempting login to:', `${API_BASE}/api/admin/login`);
+    console.log('[ADMIN LOGIN] Username:', username);
+    console.log('[ADMIN LOGIN] Password length:', password.length);
+    
     const res = await fetch(`${API_BASE}/api/admin/login`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    return res.json();
+    
+    console.log('[ADMIN LOGIN] Response status:', res.status);
+    console.log('[ADMIN LOGIN] Response OK:', res.ok);
+    
+    const json = await res.json();
+    console.log('[ADMIN LOGIN] Response body:', json);
+    
+    return json;
   } catch (error) {
-    console.error('Admin login failed');
+    console.error('[ADMIN LOGIN] Fetch failed:', error);
     return { success: false, message: 'Login failed. Please try again.' };
   }
 }
