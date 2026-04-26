@@ -24,20 +24,25 @@ const adminAuth = async (fastify) => {
       }
 
       if (!request.user || request.user.username !== env.ADMIN_USERNAME) {
-        logger.warn('[ADMIN AUTH] Invalid user in token:', request.user);
-        return reply.status(401).send({
+        logger.warn('[ADMIN AUTH] Invalid user in token. Expected:', env.ADMIN_USERNAME, 'Got:', request.user?.username);
+        reply.status(401).send({
           success: false,
           message: 'Unauthorized'
         });
+        throw new Error('Unauthorized');
       }
-      
+
       logger.info('[ADMIN AUTH] Authentication successful for:', request.user.username);
     } catch (error) {
-      logger.warn('[ADMIN AUTH] JWT verification failed:', error.message);
-      return reply.status(401).send({
+      if (error.message === 'Unauthorized') {
+        throw error;
+      }
+      logger.warn('[ADMIN AUTH] JWT verification failed:', error.message, 'Token present:', !!request.headers.authorization);
+      reply.status(401).send({
         success: false,
         message: 'Unauthorized'
       });
+      throw new Error('Unauthorized');
     }
   });
 
