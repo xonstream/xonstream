@@ -190,12 +190,17 @@ module.exports = async (fastify, opts) => {
       const perPage = parseInt(request.query.perPage, 10) || 12;
       const category = request.query.category;
 
+      logger.info(`[POSTS] Fetching posts - page=${page}, perPage=${perPage}, category=${category || 'all'}`);
+
       // Build cache key including category
       const cacheKey = `posts:page:${page}:perPage:${perPage}:category:${category || 'all'}`;
       const cached = cacheService.get(cacheKey);
-      if (cached && page > 1) {
+      if (cached) {
+        logger.info(`[POSTS] Cache hit for ${cacheKey}`);
         return reply.send(cached);
       }
+
+      logger.info(`[POSTS] Cache miss, fetching from database`);
 
       const skip = (page - 1) * perPage;
 
@@ -204,7 +209,7 @@ module.exports = async (fastify, opts) => {
 
       // If category filter is provided, first get post IDs from post_categories junction table
       if (category && category !== 'all') {
-        logger.info(`=== CATEGORY FILTER REQUESTED: ${category} ===`);
+        logger.info(`[POSTS] Category filter requested: ${category}`);
         
         // Step 1: Find category ID by name
         const { data: categoryData, error: catError } = await supabase
@@ -214,8 +219,7 @@ module.exports = async (fastify, opts) => {
           .single();
 
         if (catError || !categoryData) {
-          logger.warn(`Category not found: ${category}`);
-          logger.warn(`Category lookup error:`, catError);
+          logger.warn(`[POSTS] Category not found: ${category}`);
           // Return empty results if category doesn't exist
           return reply.send({
             success: true,
@@ -229,7 +233,7 @@ module.exports = async (fastify, opts) => {
           });
         }
 
-        logger.info(`Found category ID: ${categoryData.id} for name: ${category}`);
+        logger.info(`[POSTS] Found category ID: ${categoryData.id}`);
 
         // Step 2: Get all post IDs that have this category
         const { data: postCategories, error: pcError } = await supabase
@@ -238,25 +242,15 @@ module.exports = async (fastify, opts) => {
           .eq('category_id', categoryData.id);
 
         if (pcError) {
-          logger.error('Error fetching post_categories', pcError);
+          logger.error('[POSTS] Error fetching post_categories', pcError);
           throw pcError;
         }
 
         postIds = (postCategories || []).map(pc => pc.post_id);
-        logger.info(`Found ${postIds.length} posts with category ${category}`);
+        logger.info(`[POSTS] Found ${postIds.length} posts with category ${category}`);
 
         if (postIds.length === 0) {
-          // No posts in this category
-          logger.warn(`No posts found in category: ${category}`);
-          logger.warn(`Checking if post_categories table has ANY data...`);
-          
-          const { data: allPostCategories } = await supabase
-            .from('post_categories')
-            .select('post_id, category_id')
-            .limit(10);
-          
-          logger.warn(`Sample post_categories data:`, allPostCategories);
-          
+          logger.info(`[POSTS] No posts in category: ${category}`);
           return reply.send({
             success: true,
             data: [],
@@ -270,7 +264,6 @@ module.exports = async (fastify, opts) => {
         }
 
         totalCount = postIds.length;
-        logger.info(`Total posts in category ${category}: ${totalCount}`);
       }
 
       // Build the posts query
@@ -293,58 +286,61 @@ module.exports = async (fastify, opts) => {
         .range(skip, skip + perPage - 1);
 
       if (error) {
-        logger.error('Error fetching posts from Supabase', error);
+        logger.error('[POSTS] Error fetching posts from Supabase', error);
         throw error;
       }
 
-      // Fetch all categories for these posts from the junction table
-      const postsWithCategories = await Promise.all((posts || []).map(async (post) => {
-        // Get all categories for this post
-        const { data: postCats, error: pcError } = await supabase
+      logger.info(`[POSTS] Fetched ${posts?.length || 0} posts from database`);
+
+      // OPTIMIZED: Fetch all categories for all posts in ONE query instead of N+1
+      const postIdsList = (posts || []).map(p => p.id);
+      let categoriesMap = {};
+      
+      if (postIdsList.length > 0) {
+        const { data: allPostCategories, error: catErr } = await supabase
           .from('post_categories')
-          .select('category:categories(name)')
-          .eq('post_id', post.id);
+          .select('post_id, category:categories(name)')
+          .in('post_id', postIdsList);
 
-        if (pcError) {
-          logger.warn(`Error fetching categories for post ${post.id}:`, pcError.message);
+        if (catErr) {
+          logger.warn('[POSTS] Error fetching categories:', catErr.message);
+        } else if (allPostCategories) {
+          allPostCategories.forEach(pc => {
+            if (!categoriesMap[pc.post_id]) {
+              categoriesMap[pc.post_id] = [];
+            }
+            if (pc.category?.name) {
+              categoriesMap[pc.post_id].push(pc.category.name);
+            }
+          });
+          logger.info(`[POSTS] Fetched categories for ${Object.keys(categoriesMap).length} posts`);
         }
+      }
 
-        const categories = (postCats || [])
-          .map(pc => pc.category?.name)
-          .filter(Boolean);
-
-        // Fetch thumbnail and preview from API on-demand (with caching)
-        const [thumbnail, previewUrl] = await Promise.all([
-          getPostThumbnail(post),
-          getPostPreview(post)
-        ]);
-        
-        // DIAGNOSTIC: Log EXACT channel data from Supabase
-        logger.info(`Public Post "${post.title}" (ID: ${post.id}):`);
-        logger.info(`  - channel_id in DB: ${post.channel_id}`);
-        logger.info(`  - channel.name from join: ${post.channel?.name || 'NULL'}`);
+      // Format posts
+      const formattedPosts = (posts || []).map(post => {
+        const categories = categoriesMap[post.id] || [];
         
         return {
           id: post.id,
           title: post.title,
           description: post.description || '',
-          thumbnail: thumbnail,
-          previewUrl: previewUrl,
+          thumbnail: buildThumbnailUrl(post.thumbnail),
           channelName: post.channel?.name || '',
-          channelId: post.channel_id, // Return the actual channel_id from DB
+          channelId: post.channel_id,
           categories: categories,
-          category: categories[0] || '', // First category for backward compatibility
+          category: categories[0] || '',
           actors: (post.post_actors || []).map(pa => pa.actor?.name || '').filter(name => name),
-          videoSources: [], // Empty - will search API by title when needed
+          videoSources: [],
           createdAt: post.created_at,
           actorCount: post.post_actors ? post.post_actors.length : 0
         };
-      }));
+      });
 
       const total = totalCount !== null ? totalCount : (count || 0);
       const result = {
         success: true,
-        data: postsWithCategories,
+        data: formattedPosts,
         pagination: {
           page,
           perPage,
@@ -353,11 +349,12 @@ module.exports = async (fastify, opts) => {
         }
       };
 
+      logger.info(`[POSTS] Returning ${formattedPosts.length} posts, total=${total}`);
       cacheService.set(cacheKey, result, 3600);
 
       return reply.send(result);
     } catch (error) {
-      logger.error('Error fetching posts', error);
+      logger.error('[POSTS] Error fetching posts', error);
       return reply.status(500).send({
         success: false,
         message: 'Failed to fetch posts'
