@@ -26,7 +26,7 @@ export interface VideoSource {
 
 // For admin forms (minimal data)
 export interface VideoSourceInput {
-  platform: 'seekstreaming' | 'streamtape';
+  platform: 'seekstreaming';
   videoId: string;
 }
 

@@ -86,14 +86,29 @@ const adminAuth = async (fastify) => {
         { expiresIn: '24h' }
       );
 
-      reply.setCookie('admin_session', token, {
+      // Determine cookie settings based on request origin
+      const origin = request.headers.origin || '';
+      const isHttps = origin.startsWith('https://') || request.protocol === 'https';
+      const isHuggingFace = origin.includes('.hf.space') || request.hostname.includes('.hf.space');
+      const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1') || request.hostname === 'localhost';
+
+      const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: isHttps, // Secure for HTTPS origins
         sameSite: 'none', // Required for cross-origin cookies
         maxAge: 24 * 60 * 60 * 1000,
-        path: '/',
-        domain: '.hf.space' // Allow cookie to be sent from any hf.space subdomain
-      });
+        path: '/'
+      };
+
+      // Only set domain for Hugging Face Spaces (not localhost)
+      if (isHuggingFace && !isLocalhost) {
+        cookieOptions.domain = '.hf.space';
+      }
+
+      logger.info(`[ADMIN LOGIN] Setting cookie - isHttps: ${isHttps}, isHuggingFace: ${isHuggingFace}, isLocalhost: ${isLocalhost}`);
+      logger.info(`[ADMIN LOGIN] Cookie options:`, cookieOptions);
+
+      reply.setCookie('admin_session', token, cookieOptions);
 
       logger.info('[ADMIN LOGIN] Cookie set successfully');
 
@@ -114,9 +129,21 @@ const adminAuth = async (fastify) => {
 
   fastify.post('/api/admin/logout', async (request, reply) => {
     try {
-      reply.clearCookie('admin_session', {
+      // Determine cookie settings based on request origin (same as login)
+      const origin = request.headers.origin || '';
+      const isHuggingFace = origin.includes('.hf.space') || request.hostname.includes('.hf.space');
+      const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1') || request.hostname === 'localhost';
+
+      const clearOptions = {
         path: '/'
-      });
+      };
+
+      // Match the domain setting from login
+      if (isHuggingFace && !isLocalhost) {
+        clearOptions.domain = '.hf.space';
+      }
+
+      reply.clearCookie('admin_session', clearOptions);
 
       return reply.send({
         success: true,

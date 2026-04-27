@@ -176,6 +176,14 @@ export async function fetchChannels(): Promise<{ success: boolean; data: Channel
   return apiFetch('/api/channels');
 }
 
+// Helper to get admin auth headers
+function getAdminHeaders(): HeadersInit {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  return token ? {
+    'Authorization': `Bearer ${token}`
+  } : {};
+}
+
 export async function saveChannel(ch: Channel): Promise<{ success: boolean }> {
   // Check if this is an existing channel (has a valid UUID-like ID)
   const isEdit = ch.id && !ch.id.startsWith('ch-');
@@ -185,7 +193,10 @@ export async function saveChannel(ch: Channel): Promise<{ success: boolean }> {
   const res = await fetch(url, {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAdminHeaders()
+    },
     body: JSON.stringify(ch),
   });
   return res.json();
@@ -195,6 +206,7 @@ export async function deleteChannel(id: string): Promise<{ success: boolean }> {
   const res = await fetch(`${API_BASE}/api/admin/channels/${id}`, {
     method: 'DELETE',
     credentials: 'include',
+    headers: getAdminHeaders(),
   });
   return res.json();
 }
@@ -232,7 +244,10 @@ export async function saveActor(actor: Actor): Promise<{ success: boolean }> {
   const res = await fetch(url, {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAdminHeaders()
+    },
     body: JSON.stringify(actor),
   });
   return res.json();
@@ -242,6 +257,7 @@ export async function deleteActor(id: string): Promise<{ success: boolean }> {
   const res = await fetch(`${API_BASE}/api/admin/actors/${id}`, {
     method: 'DELETE',
     credentials: 'include',
+    headers: getAdminHeaders(),
   });
   return res.json();
 }
@@ -250,7 +266,6 @@ export async function deleteActor(id: string): Promise<{ success: boolean }> {
 
 export interface PlayerSettings {
   autoPlay: boolean;
-  defaultServer: 'SERVER_01' | 'SERVER_02';
   updatedAt: string;
 }
 
@@ -262,12 +277,15 @@ export async function fetchAdminPlayerSettings(): Promise<{ success: boolean; da
   return apiFetch(`/api/admin/settings/player`, { credentials: 'include' });
 }
 
-export async function updatePlayerSettings(autoPlay: boolean, defaultServer: 'SERVER_01' | 'SERVER_02' = 'SERVER_01'): Promise<{ success: boolean; message: string; data: PlayerSettings }> {
+export async function updatePlayerSettings(autoPlay: boolean): Promise<{ success: boolean; message: string; data: PlayerSettings }> {
   const res = await fetch(`${API_BASE}/api/admin/settings/player`, {
     method: 'PUT',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ autoPlay, defaultServer }),
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAdminHeaders()
+    },
+    body: JSON.stringify({ autoPlay }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -297,7 +315,10 @@ export async function saveCategory(category: Category): Promise<{ success: boole
   const res = await fetch(url, {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAdminHeaders()
+    },
     body: JSON.stringify(category),
   });
   if (!res.ok) {
@@ -311,6 +332,7 @@ export async function deleteCategory(id: string): Promise<{ success: boolean; me
   const res = await fetch(`${API_BASE}/api/admin/categories/${id}`, {
     method: 'DELETE',
     credentials: 'include',
+    headers: getAdminHeaders(),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -324,6 +346,7 @@ export async function syncPosts(): Promise<{ success: boolean; data?: any; messa
   const res = await fetch(`${API_BASE}/api/admin/sync`, {
     method: 'POST',
     credentials: 'include',
+    headers: getAdminHeaders(),
   });
   return res.json();
 }
@@ -332,6 +355,16 @@ export async function deleteAllPosts(): Promise<{ success: boolean; message?: st
   const res = await fetch(`${API_BASE}/api/admin/posts/all`, {
     method: 'DELETE',
     credentials: 'include',
+    headers: getAdminHeaders(),
+  });
+  return res.json();
+}
+
+export async function flushCache(): Promise<{ success: boolean; message?: string; data?: { thumbnailsUpdated: number; thumbnailErrors: number } }> {
+  const res = await fetch(`${API_BASE}/api/admin/cache/flush`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: getAdminHeaders(),
   });
   return res.json();
 }

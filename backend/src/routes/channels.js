@@ -3,6 +3,22 @@ const cacheService = require('../services/cacheService');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
+// Filter out unwanted category names
+const BLOCKED_CATEGORY_PATTERNS = [
+  'example', 'yeh', 'mp4', 'free full video', 'full video', 'free video',
+  '⭐️', '⭐', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp'
+];
+
+function isBlockedCategory(name) {
+  if (!name) return true;
+  const lower = name.toLowerCase();
+  return BLOCKED_CATEGORY_PATTERNS.some(pattern => lower.includes(pattern));
+}
+
+function filterCategories(categories) {
+  return (categories || []).filter(c => !isBlockedCategory(c));
+}
+
 // Helper function to build full thumbnail URL from path
 function buildThumbnailUrl(thumbnailPath) {
   if (!thumbnailPath) return '';
@@ -244,8 +260,9 @@ module.exports = async (fastify, opts) => {
           videoId: vs.video_id
         }));
         
-        // Get categories from map
-        const categories = categoriesMap[post.id] || [];
+        // Get categories from map and filter out unwanted ones
+        const rawCategories = categoriesMap[post.id] || [];
+        const categories = filterCategories(rawCategories);
         
         // CRITICAL FIX: Use ONLY the actual channel from the post's relationship
         // NO FALLBACK to current page's channel - this was causing wrong channel names!

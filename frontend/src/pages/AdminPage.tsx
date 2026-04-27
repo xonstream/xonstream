@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signOut, getSettings, saveSettings } from '@/lib/store';
-import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, adminLogout } from '@/lib/api';
+import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, adminLogout, flushCache } from '@/lib/api';
 import Loader from '@/components/Loader';
 
 import type { Channel, Actor, Category, Post, VideoSourceInput } from '@/lib/types';
-import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles } from 'lucide-react';
+import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AdminTab = 'dashboard' | 'posts' | 'channels' | 'actors' | 'categories' | 'settings' | 'player-settings';
@@ -418,7 +418,7 @@ export default function AdminPage() {
 
   const [cats, setCats] = useState<Category[]>([]);
   const [settings, setSettings] = useState(() => getSettings());
-  const [playerSettings, setPlayerSettings] = useState<{ autoPlay: boolean; defaultServer: 'SERVER_01' | 'SERVER_02'; updatedAt: string }>({ autoPlay: true, defaultServer: 'SERVER_01', updatedAt: '' });
+  const [playerSettings, setPlayerSettings] = useState<{ autoPlay: boolean; updatedAt: string }>({ autoPlay: true, updatedAt: '' });
   const [modal, setModal] = useState<{ type: 'post' | 'channel' | 'actor' | 'category' | 'bulk'; mode: 'add' | 'edit'; data?: Post | Channel | Actor | Category } | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [formActors, setFormActors] = useState<string[]>([]);
@@ -433,7 +433,7 @@ export default function AdminPage() {
   const [buttonLoading, setButtonLoading] = useState<Record<string, boolean>>({});
   const [buttonDone, setButtonDone] = useState<Record<string, boolean>>({});
 
-  // Real data from backend/GitHub
+  // Real data from backend/Supabase
   const [backendPosts, setBackendPosts] = useState<Post[]>([]);
   const [chs, setChs] = useState<Channel[]>([]);
   const [acts, setActs] = useState<Actor[]>([]);
@@ -466,7 +466,6 @@ export default function AdminPage() {
       console.log('[ADMIN] Response received:', j);
       console.log('[ADMIN] success:', j.success);
       console.log('[ADMIN] data:', j.data);
-      console.log('[ADMIN] message:', j.message);
       
       if (j.success && j.data) {
         // DIAGNOSTIC: Log EXACT data received from API
@@ -491,7 +490,7 @@ export default function AdminPage() {
         toast.success(`Loaded ${cleaned.length} posts`);
       } else {
         console.error('[ADMIN] Failed to load posts - Response:', j);
-        toast.error(`Failed to load posts: ${j.message || 'No data returned'}`);
+        toast.error(`Failed to load posts: ${(j as any).message || 'No data returned'}`);
         setBackendPosts([]);
       }
     } catch (err) {
@@ -550,7 +549,7 @@ export default function AdminPage() {
 
   const handleSavePlayerSettings = async () => {
     try {
-      await updatePlayerSettings(playerSettings.autoPlay, playerSettings.defaultServer);
+      await updatePlayerSettings(playerSettings.autoPlay);
       toast.success('Player settings updated successfully!');
     } catch (err: any) {
       console.error('Failed to update player settings:', err);
@@ -687,7 +686,6 @@ export default function AdminPage() {
         description: postData.description || '',
         channelName: postData.channelName || '',
         vid_seekstreaming: seekSrc?.videoId || '',
-        vid_streamtape: postData.videoSources?.find((s: any) => s.platform === 'streamtape')?.videoId || '',
       });
       setFormActors(postData.actors || []);
       setFormCategories(postData.categories || []);
@@ -698,16 +696,12 @@ export default function AdminPage() {
   };
 
   const handleSavePost = async () => {
-    // Build videoSources - Seekstreaming AND Streamtape
+    // Build videoSources - SeekStreaming only
     const seekId = (form.vid_seekstreaming || '').trim();
-    const streamtapeId = (form.vid_streamtape || '').trim();
     const updatedSources: VideoSourceInput[] = [];
     
     if (seekId) {
       updatedSources.push({ platform: 'seekstreaming', videoId: seekId });
-    }
-    if (streamtapeId) {
-      updatedSources.push({ platform: 'streamtape', videoId: streamtapeId });
     }
 
     // Clean title - remove file extensions
@@ -740,10 +734,14 @@ export default function AdminPage() {
     
     setIsSaving(true);
     try {
+      const token = localStorage.getItem('admin_token');
       const resp = await fetch(`${API_BASE}/api/admin/posts${isEdit ? `/${postId}` : ''}`, {
         method: isEdit ? 'PUT' : 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(payload),
       });
       
@@ -773,11 +771,16 @@ export default function AdminPage() {
   };
 
   const handleDeletePost = async (id: string) => {
-    if (!window.confirm('Delete this post from GitHub?')) return;
+    if (!window.confirm('Delete this post from Supabase?')) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { method: 'DELETE', credentials: 'include' });
+      const token = localStorage.getItem('admin_token');
+      const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { 
+        method: 'DELETE', 
+        credentials: 'include',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
       const json = await resp.json();
-      if (json.success) { toast.success('Post deleted from GitHub ✓'); fetchBackendPosts(); }
+      if (json.success) { toast.success('Post deleted from Supabase ✓'); fetchBackendPosts(); }
       else toast.error(json.error || 'Delete failed');
     } catch { toast.error('Could not reach backend'); }
   };
@@ -804,13 +807,17 @@ export default function AdminPage() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected posts from GitHub?`)) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected posts from Supabase?`)) return;
     try {
+      const token = localStorage.getItem('admin_token');
       const idsArray = Array.from(selectedIds);
       const resp = await fetch(`${API_BASE}/api/admin/posts`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ ids: idsArray }),
       });
       const json = await resp.json();
@@ -875,10 +882,14 @@ export default function AdminPage() {
         bulkPayload.addActors = bulkActors;
       }
       
+      const token = localStorage.getItem('admin_token');
       const resp = await fetch(`${API_BASE}/api/admin/posts/bulk-edit`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(bulkPayload),
       });
       
@@ -908,15 +919,17 @@ export default function AdminPage() {
 
   const handleCleanAllTitles = async () => {
 
-    if (!window.confirm(`This will permanently remove .mp4, .mkv, .avi, .mov, .wmv from ALL post titles in GitHub. Continue?`)) return;
+    if (!window.confirm(`This will permanently remove .mp4, .mkv, .avi, .mov, .wmv from ALL post titles in Supabase. Continue?`)) return;
     
     setLoadingBackend(true);
     
     try {
+      const token = localStorage.getItem('admin_token');
       // Call backend endpoint to clean titles
       const response = await fetch(`${API_BASE}/api/admin/posts/clean-titles`, {
         method: 'POST',
         credentials: 'include',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
       
       const result = await response.json();
@@ -925,7 +938,7 @@ export default function AdminPage() {
         toast.success(result.message, {
           description: `${result.updated} updated, ${result.skipped} already clean`,
         });
-        fetchBackendPosts(); // Refresh display with clean data from GitHub
+        fetchBackendPosts(); // Refresh display with clean data from Supabase
       } else {
         toast.error(result.error || 'Title cleaning failed');
       }
@@ -933,6 +946,38 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error cleaning titles:', error);
       toast.error('Failed to clean titles');
+    } finally {
+      setLoadingBackend(false);
+    }
+  };
+
+  const handleDeduplicate = async () => {
+    if (!window.confirm('This will remove duplicate posts with the same title. Keep one copy of each. Continue?')) return;
+    
+    setLoadingBackend(true);
+    
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE}/api/admin/posts/deduplicate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success(result.message, {
+          description: `${result.data.duplicateGroups} groups found, ${result.data.deleted} duplicates removed`,
+        });
+        fetchBackendPosts(); // Refresh display
+      } else {
+        toast.error(result.error || 'Deduplication failed');
+      }
+      
+    } catch (error) {
+      console.error('Error deduplicating:', error);
+      toast.error('Failed to deduplicate posts');
     } finally {
       setLoadingBackend(false);
     }
@@ -946,7 +991,7 @@ export default function AdminPage() {
     try {
       const r = await saveChannel(ch);
       if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Channel updated in GitHub ✓' : 'Channel added to GitHub ✓');
+        toast.success(modal?.mode === 'edit' ? 'Channel updated in Supabase ✓' : 'Channel added to Supabase ✓');
         fetchChannels().then(res => { if (res.success) setChs(res.data); }).catch(() => {});
         setModal(null);
       } else toast.error('Save failed');
@@ -954,7 +999,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteChannel = async (id: string) => {
-    if (!window.confirm('Delete this channel from GitHub?')) return;
+    if (!window.confirm('Delete this channel from Supabase?')) return;
     try {
       const r = await deleteChannel(id);
       if (r.success) {
@@ -980,7 +1025,7 @@ export default function AdminPage() {
     try {
       const r = await saveActor(actor);
       if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Actor updated in GitHub ✓' : 'Actor added to GitHub ✓');
+        toast.success(modal?.mode === 'edit' ? 'Actor updated in Supabase ✓' : 'Actor added to Supabase ✓');
         // Refresh local admin state
         fetchActors().then(res => { if (res.success) setActs(res.data); }).catch(() => {});
         // Invalidate React Query cache so ActorsPage/ActorPage/SearchPage immediately show updated crop
@@ -991,7 +1036,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteActor = async (id: string) => {
-    if (!window.confirm('Delete this actor from GitHub?')) return;
+    if (!window.confirm('Delete this actor from Supabase?')) return;
     try {
       const r = await deleteActor(id);
       if (r.success) {
@@ -1151,19 +1196,17 @@ export default function AdminPage() {
                 {buttonLoading.sync ? <Loader size="small" /> : <><RefreshCw className="w-4 h-4" /> Sync Posts</>}
               </button>
               <button onClick={async () => {
-                if (!window.confirm('Are you sure you want to flush all cache? This will refresh all data from the database.')) return;
+                if (!window.confirm('Are you sure you want to flush all cache? This will fetch fresh thumbnails from SeekStreaming and refresh all data from the database.')) return;
                 setButtonLoading(prev => ({ ...prev, flush: true }));
                 try {
-                  const resp = await fetch(`${API_BASE}/api/admin/cache/flush`, {
-                    method: 'POST',
-                    credentials: 'include',
-                  });
-                  const json = await resp.json();
-                  if (json.success) {
-                    toast.success('Cache flushed successfully! ✓');
+                  const result = await flushCache();
+                  if (result.success) {
+                    const updated = result.data?.thumbnailsUpdated || 0;
+                    const errors = result.data?.thumbnailErrors || 0;
+                    toast.success(`Cache flushed! ${updated} thumbnails updated${errors > 0 ? `, ${errors} errors` : ''} ✓`);
                     refreshAll();
                   } else {
-                    toast.error(json.message || 'Failed to flush cache');
+                    toast.error(result.message || 'Failed to flush cache');
                   }
                 } catch (error) {
                   console.error('Cache flush error:', error);
@@ -1184,6 +1227,15 @@ export default function AdminPage() {
                 disabled={buttonLoading.clean}
                 className="flex items-center gap-2 px-5 py-2.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-[20px] text-sm font-medium hover:bg-purple-500/30 transition-all shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 min-w-[140px] justify-center">
                 {buttonLoading.clean ? <Loader size="small" /> : <><Sparkles className="w-4 h-4" /> Format File Fix</>}
+              </button>
+              <button onClick={async () => {
+                setButtonLoading(prev => ({ ...prev, dedupe: true }));
+                await handleDeduplicate();
+                setButtonLoading(prev => ({ ...prev, dedupe: false }));
+              }}
+                disabled={buttonLoading.dedupe}
+                className="flex items-center gap-2 px-5 py-2.5 bg-orange-500/20 text-orange-300 border border-orange-500/30 rounded-[20px] text-sm font-medium hover:bg-orange-500/30 transition-all shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 min-w-[140px] justify-center">
+                {buttonLoading.dedupe ? <Loader size="small" /> : <><Copy className="w-4 h-4" /> Deduplicate</>}
               </button>
               <button onClick={async () => {
                 setButtonLoading(prev => ({ ...prev, deleteAll: true }));
@@ -1213,21 +1265,27 @@ export default function AdminPage() {
         {tab === 'posts' && !tabLoading.posts && (() => {
           const filteredPosts = postSearch.trim()
             ? backendPosts.filter(p =>
-                p.title?.toLowerCase().includes(postSearch.toLowerCase()) ||
-                p.channelName?.toLowerCase().includes(postSearch.toLowerCase())
+                p.title?.toLowerCase().includes(postSearch.toLowerCase())
               )
             : backendPosts;
           
-          // Pagination logic
+          // Debug: Log search results
+          if (postSearch.trim()) {
+            console.log(`[SEARCH] Query: "${postSearch}" | Found: ${filteredPosts.length} of ${backendPosts.length} posts`);
+          }
+          
+          // When searching, show all results. When not searching, use pagination.
+          const isSearching = postSearch.trim() !== '';
+          const displayPosts = isSearching ? filteredPosts : filteredPosts.slice(
+            (currentPage - 1) * POSTS_PER_PAGE,
+            currentPage * POSTS_PER_PAGE
+          );
           const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
-          const startIndex = (currentPage - 1) * POSTS_PER_PAGE;
-          const endIndex = startIndex + POSTS_PER_PAGE;
-          const paginatedPosts = filteredPosts.slice(startIndex, endIndex);
           
           return (
           <div>
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">Posts ({paginatedPosts.length}{postSearch ? ` of ${backendPosts.length}` : ''})</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-foreground">Posts ({displayPosts.length}{postSearch ? ` of ${backendPosts.length}` : ''})</h1>
               <div className="flex gap-2 flex-wrap">
                 {selectedIds.size > 0 && (
                   <>
@@ -1282,8 +1340,8 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="p-3 w-8"><input type="checkbox" checked={selectedIds.size === backendPosts.length && backendPosts.length > 0}
-                      onChange={() => { if (selectedIds.size === backendPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(backendPosts.map(p => p.id))); }}
+                    <th className="p-3 w-8"><input type="checkbox" checked={selectedIds.size === displayPosts.length && displayPosts.length > 0}
+                      onChange={() => { if (selectedIds.size === displayPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(displayPosts.map(p => p.id))); }}
                       className="accent-accent w-4 h-4" /></th>
                     <th className="text-left p-3 text-muted-foreground font-medium">Thumbnail</th>
                     <th className="text-left p-3 text-muted-foreground font-medium">Title</th>
@@ -1294,7 +1352,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedPosts.map(p => (
+                  {displayPosts.map(p => (
                     <tr key={p.id} className={`border-b border-border hover:bg-secondary/30 transition-colors ${selectedIds.has(p.id) ? 'bg-accent/5' : ''}`}>
                       <td className="p-3"><input type="checkbox" checked={selectedIds.has(p.id)}
                         onChange={() => { const s = new Set(selectedIds); if (s.has(p.id)) s.delete(p.id); else s.add(p.id); setSelectedIds(s); }}
@@ -1329,7 +1387,7 @@ export default function AdminPage() {
               </table>
             </div>
             <div className="md:hidden space-y-3">
-              {paginatedPosts.map(p => (
+              {displayPosts.map(p => (
                 <div key={p.id} className={`bg-card rounded-[12px] border border-border p-3 flex items-center gap-3 ${selectedIds.has(p.id) ? 'ring-2 ring-accent/40' : ''}`}>
                   <input type="checkbox" checked={selectedIds.has(p.id)}
                     onChange={() => { const s = new Set(selectedIds); if (s.has(p.id)) s.delete(p.id); else s.add(p.id); setSelectedIds(s); }}
@@ -1353,8 +1411,8 @@ export default function AdminPage() {
               ))}
             </div>
             
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
+            {/* Pagination Controls - Only show when not searching */}
+            {!isSearching && totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 mt-6">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -1558,39 +1616,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Default Server Setting */}
-              <div className="pt-4 border-t border-border">
-                <label className="text-sm font-medium text-foreground block mb-3">Default Video Server</label>
-                <p className="text-xs text-muted-foreground mb-4">Select which server users will see by default when opening videos.</p>
-                
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPlayerSettings({ ...playerSettings, defaultServer: 'SERVER_01' })}
-                    className={`flex-1 px-4 py-3 rounded-full text-sm font-medium transition-all ${
-                      playerSettings.defaultServer === 'SERVER_01'
-                        ? 'bg-accent text-white shadow-lg shadow-accent/30'
-                        : 'bg-secondary text-secondary-foreground hover:bg-tertiary'
-                    }`}
-                  >
-                    SERVER 01
-                    <span className="block text-xs font-normal opacity-80 mt-0.5">Seekstreaming</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPlayerSettings({ ...playerSettings, defaultServer: 'SERVER_02' })}
-                    className={`flex-1 px-4 py-3 rounded-full text-sm font-medium transition-all ${
-                      playerSettings.defaultServer === 'SERVER_02'
-                        ? 'bg-accent text-white shadow-lg shadow-accent/30'
-                        : 'bg-secondary text-secondary-foreground hover:bg-tertiary'
-                    }`}
-                  >
-                    SERVER 02
-                    <span className="block text-xs font-normal opacity-80 mt-0.5">Streamtape</span>
-                  </button>
-                </div>
-              </div>
-
               {playerSettings.updatedAt && (
                 <p className="text-xs text-muted-foreground">
                   Last updated: {new Date(playerSettings.updatedAt).toLocaleString()}
@@ -1644,38 +1669,17 @@ export default function AdminPage() {
         <ActorMultiSelect selected={formActors} onChange={setFormActors} options={acts.map(a => a.name)} />
         <CategoryMultiSelect selected={formCategories} onChange={setFormCategories} options={cats.filter(c => c.id !== 'all').map(c => c.name)} />
 
-        {/* ── Video Source IDs (Seekstreaming + Streamtape) ── */}
+        {/* ── Video Source ID (SeekStreaming Only) ── */}
         <div className="mb-3 mt-1">
-          <label className="text-sm font-medium text-foreground block mb-1">Video Sources</label>
-          <p className="text-xs text-muted-foreground mb-2">Add video IDs for each server. Fill in both for server switching.</p>
+          <label className="text-sm font-medium text-foreground block mb-1">SeekStreaming Video ID</label>
+          <p className="text-xs text-muted-foreground mb-2">Enter the SeekStreaming video ID for this post.</p>
           
-          {/* SERVER 01 - Seekstreaming */}
-          <div className="flex items-center gap-2 mb-2">
-            <div className="text-xs font-semibold text-purple-400 w-[100px] flex-shrink-0">
-              <span className="block">SERVER 01</span>
-              <span className="block text-[10px] opacity-70">Seekstreaming</span>
-            </div>
-            <input
-              value={form.vid_seekstreaming || ''}
-              onChange={e => setForm({ ...form, vid_seekstreaming: e.target.value })}
-              placeholder="Seekstreaming video ID"
-              className="flex-1 px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
-            />
-          </div>
-          
-          {/* SERVER 02 - Streamtape */}
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-semibold text-blue-400 w-[100px] flex-shrink-0">
-              <span className="block">SERVER 02</span>
-              <span className="block text-[10px] opacity-70">Streamtape</span>
-            </div>
-            <input
-              value={form.vid_streamtape || ''}
-              onChange={e => setForm({ ...form, vid_streamtape: e.target.value })}
-              placeholder="Streamtape video ID"
-              className="flex-1 px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
-            />
-          </div>
+          <input
+            value={form.vid_seekstreaming || ''}
+            onChange={e => setForm({ ...form, vid_seekstreaming: e.target.value })}
+            placeholder="SeekStreaming video ID"
+            className="w-full px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
+          />
         </div>
 
         <button onClick={handleSavePost} disabled={isSaving} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 min-h-[40px]">

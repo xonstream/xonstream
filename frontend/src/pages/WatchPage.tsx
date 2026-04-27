@@ -209,12 +209,12 @@ export default function WatchPage() {
     staleTime: 60_000,
   });
 
-  // Fetch player settings for default server
+  // Fetch player settings for auto-play
   const { data: playerSettingsData } = useQuery({
     queryKey: ['playerSettings'],
     queryFn: () => fetchPlayerSettings().catch(() => {
       // Return default settings on error
-      return { success: true, data: { autoPlay: true, defaultServer: 'SERVER_01', updatedAt: '' } };
+      return { success: true, data: { autoPlay: true, updatedAt: '' } };
     }),
     retry: 0,
     staleTime: 300_000,
@@ -224,24 +224,9 @@ export default function WatchPage() {
   const videoLink = videoData?.data?.videoLink ?? null;
   const sources = videoData?.data?.sources ?? [];
   const relatedPosts = (relatedData?.data ?? []).filter(p => p.id !== videoId).slice(0, 6);
-  const defaultServer = playerSettingsData?.data?.defaultServer || 'SERVER_01';
   
-  // Server switching state - initialize based on admin default
-  const [selectedServer, setSelectedServer] = useState(() => {
-    return defaultServer === 'SERVER_02' ? 1 : 0;
-  });
-  
-  // Update selected server when default changes
-  useEffect(() => {
-    const defaultIndex = defaultServer === 'SERVER_02' ? 1 : 0;
-    // Only auto-switch if we have both servers available
-    if (sources.length > 1 && selectedServer !== defaultIndex) {
-      setSelectedServer(defaultIndex);
-    }
-  }, [defaultServer, sources.length]);
-  
-  // Current embed URL based on selected server
-  const embedUrl = sources[selectedServer]?.embedUrl ?? videoLink?.embedUrl ?? null;
+  // Use SeekStreaming source (only source now)
+  const embedUrl = sources[0]?.embedUrl ?? videoLink?.embedUrl ?? null;
 
   useEffect(() => {
     if (post) {
@@ -298,25 +283,6 @@ export default function WatchPage() {
             <p className="text-muted-foreground text-sm">Video not available</p>
           )}
         </div>
-
-        {/* Server Tabs - Centered below video, smaller on mobile */}
-        {sources.length > 0 && (
-          <div className="flex justify-center gap-2 sm:gap-3 mt-3 sm:mt-4 px-4 sm:px-0">
-            {sources.map((source, index) => (
-              <button
-                key={source.platform}
-                onClick={() => setSelectedServer(index)}
-                className={`px-3 py-1.5 sm:px-6 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 shadow-sm ${
-                  selectedServer === index
-                    ? 'bg-accent text-white shadow-accent/30'
-                    : 'bg-secondary text-secondary-foreground hover:bg-tertiary hover:shadow-md'
-                }`}
-              >
-                {source.name}
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* Title */}
         <h1 className="text-xl font-bold text-foreground mt-4 px-4 sm:px-0">
@@ -375,23 +341,13 @@ export default function WatchPage() {
         </div>
 
         {/* Meta - Only show if there's content */}
-        {post && (post.description || post.createdAt || post.categories?.length) && (
+        {post && (post.description || post.createdAt) && (
           <div className="mt-4 p-3 sm:p-4 bg-card sm:rounded-[12px] mx-0 sm:mx-0">
             {post.createdAt && (
               <p className="text-sm text-muted-foreground mb-2">{post.createdAt}</p>
             )}
             {post.description && post.description.trim() && (
               <p className="text-sm text-foreground mb-3">{post.description}</p>
-            )}
-            {post.categories && post.categories.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                {post.categories.map((cat: string) => (
-                  <Link key={cat} to={`/search?category=${encodeURIComponent(cat)}`}
-                    className="px-3 py-1 text-xs rounded-[20px] bg-secondary text-secondary-foreground hover:bg-accent/20 hover:text-accent transition-colors cursor-pointer">
-                    {cat}
-                  </Link>
-                ))}
-              </div>
             )}
           </div>
         )}

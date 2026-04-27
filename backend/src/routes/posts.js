@@ -1,9 +1,24 @@
 const supabase = require('../config/supabase');
 const cacheService = require('../services/cacheService');
-const streamtapeService = require('../services/streamtape');
 const seekstreamingService = require('../services/seekstreaming');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+
+// Filter out unwanted category names
+const BLOCKED_CATEGORY_PATTERNS = [
+  'example', 'yeh', 'mp4', 'free full video', 'full video', 'free video',
+  '⭐️', '⭐', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp'
+];
+
+function isBlockedCategory(name) {
+  if (!name) return true;
+  const lower = name.toLowerCase();
+  return BLOCKED_CATEGORY_PATTERNS.some(pattern => lower.includes(pattern));
+}
+
+function filterCategories(categories) {
+  return (categories || []).filter(c => !isBlockedCategory(c));
+}
 
 // Helper function to build full thumbnail URL from path
 function buildThumbnailUrl(thumbnailPath) {
@@ -75,12 +90,12 @@ function normalizeTitle(title) {
     .replace(/\s+/g, ''); // Remove spaces
 }
 
-// Helper function to search for video by post title across all platforms
+// Helper function to search for video by post title (SeekStreaming only)
 async function searchVideoByTitle(postTitle) {
   try {
     const normalizedTitle = normalizeTitle(postTitle);
     
-    // Search SeekStreaming
+    // Search SeekStreaming only
     const videoListCacheKey = 'seekstreaming:video:list';
     let seekVideos = cacheService.get(videoListCacheKey);
     
@@ -94,27 +109,12 @@ async function searchVideoByTitle(postTitle) {
       return normalizedVideoTitle === normalizedTitle;
     });
     
-    // Search Streamtape
-    const streamtapeListCacheKey = 'streamtape:file:list';
-    let streamtapeFiles = cacheService.get(streamtapeListCacheKey);
-    
-    if (!streamtapeFiles) {
-      streamtapeFiles = await streamtapeService.getAllFiles();
-      cacheService.set(streamtapeListCacheKey, streamtapeFiles, 300); // Cache for 5 minutes
-    }
-    
-    const streamtapeMatch = streamtapeFiles.find(file => {
-      const normalizedFileName = normalizeTitle(file.name);
-      return normalizedFileName === normalizedTitle;
-    });
-    
     return {
-      seekstreaming: seekMatch || null,
-      streamtape: streamtapeMatch || null
+      seekstreaming: seekMatch || null
     };
   } catch (error) {
     logger.error('Failed to search video by title:', error.message);
-    return { seekstreaming: null, streamtape: null };
+    return { seekstreaming: null };
   }
 }
 
@@ -321,14 +321,23 @@ module.exports = async (fastify, opts) => {
       }
 
       // Format posts
-      const formattedPosts = (posts || []).map(post => {
-        const categories = categoriesMap[post.id] || [];
+      const formattedPosts = await Promise.all((posts || []).map(async (post) => {
+        const rawCategories = categoriesMap[post.id] || [];
+        // Filter out unwanted categories
+        const categories = filterCategories(rawCategories);
+        
+        // Check video sources (SeekStreaming only)
+        const videoSources = post.post_video_sources || [];
+        const hasSeekstreaming = videoSources.some(s => s.platform === 'seekstreaming');
+        
+        // Determine thumbnail
+        let thumbnailUrl = buildThumbnailUrl(post.thumbnail);
         
         return {
           id: post.id,
           title: post.title,
           description: post.description || '',
-          thumbnail: buildThumbnailUrl(post.thumbnail),
+          thumbnail: thumbnailUrl,
           channelName: post.channel?.name || '',
           channelId: post.channel_id,
           categories: categories,
@@ -338,7 +347,7 @@ module.exports = async (fastify, opts) => {
           createdAt: post.created_at,
           actorCount: post.post_actors ? post.post_actors.length : 0
         };
-      });
+      }));
 
       const total = totalCount !== null ? totalCount : (count || 0);
       const result = {
@@ -413,7 +422,7 @@ module.exports = async (fastify, opts) => {
       }
 
       // Fetch all categories for this post from the junction table
-      let categories = [];
+      let rawCategories = [];
       try {
         const { data: postCats, error: catError } = await supabase
           .from('post_categories')
@@ -423,13 +432,16 @@ module.exports = async (fastify, opts) => {
         if (catError) {
           logger.warn(`Error fetching categories for post ${id}:`, catError.message);
         } else {
-          categories = (postCats || [])
+          rawCategories = (postCats || [])
             .map(pc => pc.category?.name)
             .filter(Boolean);
         }
       } catch (catErr) {
         logger.warn(`Error fetching categories for post ${id}:`, catErr.message);
       }
+
+      // Filter out unwanted categories
+      const categories = filterCategories(rawCategories);
 
       // Format post to include channelName for frontend compatibility
       // Fetch thumbnail and preview from API on-demand
@@ -502,44 +514,19 @@ module.exports = async (fastify, opts) => {
         });
       }
 
-      // Build video sources - return all available sources for server switching
-      // SERVER 01 = Seekstreaming (primary), SERVER 02 = Streamtape (secondary)
+      // Build video sources - SeekStreaming only (no server labels)
       const sources = [];
 
-      // Always add SERVER 01 (Seekstreaming) first
+      // Add SeekStreaming source
       const seekSource = videoSources.find(s => s.platform === 'seekstreaming');
       if (seekSource) {
         sources.push({
           platform: 'seekstreaming',
-          name: 'SERVER 01',
+          name: 'SeekStreaming',
           videoId: seekSource.video_id,
           embedUrl: seekstreamingService.getPlayerUrl(seekSource.video_id),
           downloadUrl: seekstreamingService.getDownloadUrl(seekSource.video_id),
           thumbnail: null
-        });
-      }
-
-      // Always add SERVER 02 (Streamtape) second
-      const streamtapeSource = videoSources.find(s => s.platform === 'streamtape');
-      if (streamtapeSource) {
-        const thumbKey = `video:streamtape:thumb:${streamtapeSource.video_id}`;
-        let thumbnail = cacheService.get(thumbKey);
-
-        if (!thumbnail) {
-          try {
-            thumbnail = await streamtapeService.getThumbnail(streamtapeSource.video_id);
-          } catch (e) {
-            thumbnail = `https://thumb.tapecontent.net/thumb/${streamtapeSource.video_id}/thumb.jpg`;
-          }
-        }
-
-        sources.push({
-          platform: 'streamtape',
-          name: 'SERVER 02',
-          videoId: streamtapeSource.video_id,
-          embedUrl: streamtapeService.getEmbedUrl(streamtapeSource.video_id),
-          downloadUrl: null,
-          thumbnail: thumbnail
         });
       }
 

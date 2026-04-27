@@ -7,8 +7,6 @@ const requiredEnvVars = [
   'PORT',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
-  'STREAMTAPE_LOGIN',
-  'STREAMTAPE_KEY',
   'SEEKSTREAMING_KEY',
   'SEEKSTREAMING_PLAYER_DOMAIN',
   'ADMIN_USERNAME',
@@ -27,8 +25,8 @@ module.exports = {
   PORT: parseInt(process.env.PORT, 10) || 7860, // Hugging Face Spaces default port
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-  STREAMTAPE_LOGIN: process.env.STREAMTAPE_LOGIN,
-  STREAMTAPE_KEY: process.env.STREAMTAPE_KEY,
+  STREAMTAPE_LOGIN: process.env.STREAMTAPE_LOGIN || '', // Optional - deprecated
+  STREAMTAPE_KEY: process.env.STREAMTAPE_KEY || '', // Optional - deprecated
   SEEKSTREAMING_KEY: process.env.SEEKSTREAMING_KEY,
   SEEKSTREAMING_PLAYER_DOMAIN: process.env.SEEKSTREAMING_PLAYER_DOMAIN,
   ADMIN_USERNAME: process.env.ADMIN_USERNAME,

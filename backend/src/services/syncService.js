@@ -1,5 +1,4 @@
 const supabase = require('../config/supabase');
-const streamtapeService = require('./streamtape');
 const seekstreamingService = require('./seekstreaming');
 const cacheService = require('./cacheService');
 const logger = require('../utils/logger');
@@ -22,22 +21,6 @@ class SyncService {
       .split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-  }
-
-  async fetchStreamtapeVideos() {
-    try {
-      const files = await streamtapeService.getAllFiles();
-      return files.map(file => ({
-        platform: 'streamtape',
-        videoId: file.linkid,
-        filename: file.name,
-        normalizedName: this.normalizeFilename(file.name),
-        originalData: file
-      }));
-    } catch (error) {
-      logger.error('Failed to fetch Streamtape videos', error);
-      return [];
-    }
   }
 
   async fetchSeekStreamingVideos() {
@@ -72,33 +55,31 @@ class SyncService {
 
   async getExistingPostByTitle(title) {
     const normalizedTitle = title.toLowerCase().trim();
-    const { data: existingPost, error } = await supabase
+    // Use limit(1) instead of single() to handle duplicates gracefully
+    const { data: existingPosts, error } = await supabase
       .from('posts')
-      .select('*')
+      .select('id, title')
       .ilike('title', normalizedTitle)
-      .single();
+      .limit(1);
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+    if (error) {
       logger.error('Error checking existing post', error);
+      return null;
     }
 
-    return existingPost;
+    // Return first match if any exist
+    return existingPosts && existingPosts.length > 0 ? existingPosts[0] : null;
   }
 
   async sync() {
-    logger.info('Starting video sync from platforms...');
+    logger.info('Starting video sync from SeekStreaming...');
 
     try {
-      const [streamtapeVideos, seekstreamingVideos] = await Promise.all([
-        this.fetchStreamtapeVideos(),
-        this.fetchSeekStreamingVideos()
-      ]);
+      const seekstreamingVideos = await this.fetchSeekStreamingVideos();
 
-      logger.info(`Fetched ${streamtapeVideos.length} videos from Streamtape`);
       logger.info(`Fetched ${seekstreamingVideos.length} videos from SeekStreaming`);
 
-      const allVideos = [...streamtapeVideos, ...seekstreamingVideos];
-      const groupedVideos = this.groupByNormalizedName(allVideos);
+      const groupedVideos = this.groupByNormalizedName(seekstreamingVideos);
       const normalizedNames = Object.keys(groupedVideos);
 
       logger.info(`Found ${normalizedNames.length} unique video groups`);
@@ -116,7 +97,7 @@ class SyncService {
           continue;
         }
 
-        // Fetch thumbnail URL from SeekStreaming and save to database
+        // Fetch thumbnail PATH from SeekStreaming (only the part after player domain)
         let thumbnail = '';
         const videoSources = [];
 
@@ -126,7 +107,7 @@ class SyncService {
             videoId: video.videoId
           });
 
-          // Get thumbnail PATH from SeekStreaming (only the part after player domain)
+          // Get thumbnail PATH from SeekStreaming
           if (video.platform === 'seekstreaming' && !thumbnail) {
             try {
               const videoDetail = await seekstreamingService.getVideoDetail(video.videoId);
@@ -144,8 +125,8 @@ class SyncService {
           title: this.capitalizeWords(normalizedName),
           description: '',
           actors: [],
-           channel: this.capitalizeWords(normalizedName),
-          category: null,
+          channel_id: null, // Never auto-assign channel - must be manually set in admin
+          category_id: null,
           thumbnail: thumbnail,
           videoSources: videoSources
         };
@@ -160,50 +141,15 @@ class SyncService {
           // Insert posts one by one with their video sources
           for (const post of newPosts) {
              try {
-               // Get or create channel for the post
-               let channelId = null;
-               const channelName = post.channel;
-
-               if (channelName) {
-                 // Check if channel exists
-                 const { data: existingChannel, error: channelFetchError } = await supabase
-                   .from('channels')
-                   .select('id')
-                   .eq('name', channelName)
-                   .single();
-
-                 if (channelFetchError && channelFetchError.code !== 'PGRST116') {
-                   logger.error(`Error fetching channel ${channelName}`, channelFetchError);
-                 }
-
-                 if (existingChannel) {
-                   channelId = existingChannel.id;
-                 } else {
-                   // Create new channel
-                   const { data: newChannel, error: channelCreateError } = await supabase
-                     .from('channels')
-                     .insert({ name: channelName })
-                     .select('id')
-                     .single();
-
-                   if (channelCreateError) {
-                     logger.error(`Error creating channel ${channelName}`, channelCreateError);
-                   } else if (newChannel) {
-                     channelId = newChannel.id;
-                     logger.info(`Created new channel: ${channelName} (ID: ${channelId})`);
-                   }
-                 }
-               }
-
-               // Insert post
+               // Insert post WITHOUT channel - channels must be manually assigned in admin dashboard
                const { data: newPost, error: postError } = await supabase
                  .from('posts')
                  .insert({
                    title: post.title,
                    description: post.description,
                    thumbnail: post.thumbnail,
-                   channel_id: channelId,
-                   category_id: post.category
+                   channel_id: null, // Never auto-create or auto-assign channels
+                   category_id: post.category_id
                  })
                  .select()
                  .single();
