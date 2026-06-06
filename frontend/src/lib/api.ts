@@ -281,6 +281,14 @@ export async function deleteAllPosts(): Promise<{ success: boolean; message?: st
   return res.json();
 }
 
+export async function deleteDuplicates(): Promise<{ success: boolean; data?: any; message?: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/posts/delete-duplicates`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return res.json();
+}
+
 // ─── Support Requests ────────────────────────────────────────────────────────
 export interface SupportRequest {
   key: string;

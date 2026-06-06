@@ -130,7 +130,7 @@ class CacheService {
     const keys = this.cache.keys();
     const channelKeys = keys.filter(key => key.startsWith('channel_posts:'));
     channelKeys.forEach(key => this.del(key));
-    logger.info('Invalidated channels cache', { count: channelKeys.length });
+    logger.debug('Invalidated channels cache', { count: channelKeys.length });
   }
 
   invalidateCategories() {

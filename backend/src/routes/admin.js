@@ -582,6 +582,8 @@ module.exports = async (fastify, opts) => {
         updateFields.category_id = updateData.category === '' ? null : updateData.category;
         logger.info(`Updating post ${id} category to:`, updateFields.category_id);
       }
+      // Always stamp updated_at so the homepage can sort by recency of edits
+      updateFields.updated_at = new Date().toISOString();
 
       logger.info(`Updating post ${id} with fields:`, Object.keys(updateFields));
       logger.info(`Update fields data:`, JSON.stringify(updateFields, null, 2));
@@ -871,33 +873,111 @@ module.exports = async (fastify, opts) => {
     try {
       const { id } = request.params;
 
-      // Delete related records first
-      await supabase.from('post_video_sources').delete().eq('post_id', id);
-      await supabase.from('post_actors').delete().eq('post_id', id);
-
-      const { error } = await supabase
+      // Verify the post exists first
+      const { data: existingPost, error: fetchError } = await supabase
         .from('posts')
-        .delete()
-        .eq('id', id);
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
 
-      if (error) {
+      if (fetchError) {
+        logger.error(`Error verifying post ${id}`, fetchError);
+        return reply.status(500).send({
+          success: false,
+          message: 'Database error: ' + fetchError.message
+        });
+      }
+
+      if (!existingPost) {
         return reply.status(404).send({
           success: false,
           message: 'Post not found'
         });
       }
 
-      // Invalidate ALL post-related caches including pagination
-      cacheService.invalidateAllPostLists();
+      // Delete related records first
+      await supabase.from('post_video_sources').delete().eq('post_id', id);
+      await supabase.from('post_actors').delete().eq('post_id', id);
+      await supabase.from('post_categories').delete().eq('post_id', id);
+
+      const { error: deleteError } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) {
+        logger.error(`Supabase delete error for post ${id}`, deleteError);
+        return reply.status(500).send({
+          success: false,
+          message: 'Database error: ' + deleteError.message
+        });
+      }
+
+      // Flush all cache so next read is fresh
+      cacheService.flushAll();
+      await cacheService.warmCache();
 
       return reply.send({
-        success: true
+        success: true,
+        message: 'Post deleted successfully'
       });
     } catch (error) {
       logger.error(`Error deleting post ${request.params.id}`, error);
       return reply.status(500).send({
         success: false,
-        message: 'Failed to delete post'
+        message: 'Failed to delete post: ' + (error.message || 'Unknown error')
+      });
+    }
+  });
+
+  // Bulk delete posts
+  fastify.delete('/api/admin/posts', async (request, reply) => {
+    try {
+      const { ids } = request.body || {};
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Post IDs are required'
+        });
+      }
+
+      logger.info(`=== BULK DELETE ===`);
+      logger.info(`Deleting ${ids.length} posts...`);
+
+      // Delete related records first
+      await supabase.from('post_video_sources').delete().in('post_id', ids);
+      await supabase.from('post_actors').delete().in('post_id', ids);
+      await supabase.from('post_categories').delete().in('post_id', ids);
+
+      const { error: deleteError } = await supabase
+        .from('posts')
+        .delete()
+        .in('id', ids);
+
+      if (deleteError) {
+        logger.error('Bulk delete error from Supabase:', deleteError);
+        return reply.status(500).send({
+          success: false,
+          message: 'Database error: ' + deleteError.message
+        });
+      }
+
+      // Flush all cache so next read is fresh
+      cacheService.flushAll();
+      await cacheService.warmCache();
+
+      logger.info(`Successfully bulk deleted ${ids.length} posts`);
+
+      return reply.send({
+        success: true,
+        message: `Successfully deleted ${ids.length} posts`
+      });
+    } catch (error) {
+      logger.error('Error in bulk delete:', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to delete posts: ' + (error.message || 'Unknown error')
       });
     }
   });
@@ -1828,7 +1908,7 @@ module.exports = async (fastify, opts) => {
       // Actually update the posts
       const { error: updateError } = await supabase
         .from('posts')
-        .update({ channel_id: targetChannelId })
+        .update({ channel_id: targetChannelId, updated_at: new Date().toISOString() })
         .in('id', posts.map(p => p.id));
       
       if (updateError) {
@@ -1865,5 +1945,514 @@ module.exports = async (fastify, opts) => {
       });
     }
   });
-};
 
+  // Delete all duplicate records across tables
+  fastify.post('/api/admin/posts/delete-duplicates', async (request, reply) => {
+    try {
+      logger.info('=== DELETE DUPLICATES ===');
+
+      const result = {
+        posts: { duplicatesFound: 0, deleted: 0 },
+        channels: { duplicatesFound: 0, deleted: 0 },
+        actors: { duplicatesFound: 0, deleted: 0 },
+        categories: { duplicatesFound: 0, deleted: 0 },
+        postActors: { duplicatesFound: 0, deleted: 0 },
+        postVideoSources: { duplicatesFound: 0, deleted: 0 }
+      };
+
+      const CLEAN_CHANNELS = [
+        'Bounty Hunter',
+        'Caught My Coach',
+        'Cheating Sis',
+        'Cum Swapping Sis',
+        'Daddys Lil Angel',
+        'Detention Girls',
+        'Driver XXX',
+        'Lil Sis',
+        'My Family Pies',
+        'Family Swap'
+      ];
+
+      // 1. Ensure the "Family Swap" channel exists
+      let familySwapChannelId = null;
+      const { data: fsChan } = await supabase
+        .from('channels')
+        .select('id')
+        .eq('name', 'Family Swap')
+        .maybeSingle();
+
+      if (fsChan) {
+        familySwapChannelId = fsChan.id;
+      } else {
+        const { data: newFsChan, error: newFsError } = await supabase
+          .from('channels')
+          .insert({ name: 'Family Swap' })
+          .select('id')
+          .single();
+        if (newFsError) {
+          logger.error('Failed to create Family Swap channel during deduplication', newFsError);
+        } else if (newFsChan) {
+          familySwapChannelId = newFsChan.id;
+        }
+      }
+
+      // Fetch all channels for categorization and mapping
+      const { data: allChannels, error: chanErr } = await supabase
+        .from('channels')
+        .select('id, name');
+
+      if (chanErr) {
+        logger.error('Error fetching channels:', chanErr);
+        return reply.status(500).send({ success: false, message: 'Failed to fetch channels' });
+      }
+
+      const cleanMap = {};
+      allChannels.forEach(ch => {
+        if (CLEAN_CHANNELS.includes(ch.name)) {
+          cleanMap[ch.name.toLowerCase()] = ch.id;
+        }
+      });
+      // Ensure Family Swap ID is tracked in map
+      if (familySwapChannelId) {
+        cleanMap['family swap'] = familySwapChannelId;
+      }
+
+      // 2. Find junk channels, merge their posts, and delete junk channels
+      const junkChannels = allChannels.filter(ch => !CLEAN_CHANNELS.includes(ch.name));
+      logger.info(`Found ${junkChannels.length} junk channels for merging.`);
+      
+      for (const junk of junkChannels) {
+        let matchedCleanName = null;
+        for (const cleanName of CLEAN_CHANNELS) {
+          if (junk.name.toLowerCase().startsWith(cleanName.toLowerCase()) || 
+              (cleanName === 'Driver XXX' && junk.name.toLowerCase().startsWith('driverxxx'))) {
+            matchedCleanName = cleanName;
+            break;
+          }
+        }
+        
+        if (matchedCleanName) {
+          const cleanId = cleanMap[matchedCleanName.toLowerCase()];
+          if (cleanId) {
+            logger.info(`Merging junk channel "${junk.name}" -> clean channel "${matchedCleanName}"`);
+            
+            // Re-link all posts referencing this junk channel to the clean channel
+            await supabase.from('posts').update({ channel_id: cleanId }).eq('channel_id', junk.id);
+            
+            // Delete junk channel
+            await supabase.from('channels').delete().eq('id', junk.id);
+            result.channels.deleted++;
+          }
+        } else {
+          logger.warn(`Could not map junk channel "${junk.name}" to any clean channel.`);
+        }
+      }
+
+      // Fetch all posts recursively to handle PostgREST pagination limits
+      let allPosts = [];
+      let postsFrom = 0;
+      const step = 1000;
+      let hasMorePosts = true;
+      while (hasMorePosts) {
+        const { data: posts, error } = await supabase
+          .from('posts')
+          .select('id, title, created_at, channel_id')
+          .range(postsFrom, postsFrom + step - 1)
+          .order('created_at', { ascending: true }); // oldest first
+        if (error) {
+          logger.error('Error fetching all posts for deduplication:', error);
+          break;
+        }
+        if (!posts || posts.length === 0) {
+          hasMorePosts = false;
+        } else {
+          allPosts = allPosts.concat(posts);
+          if (posts.length < step) hasMorePosts = false;
+          else postsFrom += step;
+        }
+      }
+
+      // 3. Link posts with NULL channel_id starting with clean prefixes to the clean channels
+      const unlinkedPosts = allPosts.filter(p => !p.channel_id);
+      logger.info(`Checking ${unlinkedPosts.length} unlinked posts for channel assignment...`);
+
+      for (const post of unlinkedPosts) {
+        let targetCleanName = null;
+        for (const cleanName of CLEAN_CHANNELS) {
+          if (post.title.toLowerCase().startsWith(cleanName.toLowerCase()) || 
+              (cleanName === 'Driver XXX' && post.title.toLowerCase().startsWith('driverxxx'))) {
+            targetCleanName = cleanName;
+            break;
+          }
+        }
+        if (targetCleanName) {
+          const targetCleanId = cleanMap[targetCleanName.toLowerCase()];
+          if (targetCleanId) {
+            await supabase.from('posts').update({ channel_id: targetCleanId }).eq('id', post.id);
+            logger.info(`Linked unlinked post "${post.title}" -> "${targetCleanName}"`);
+            
+            // Update in-memory copy as well
+            post.channel_id = targetCleanId;
+          }
+        }
+      }
+
+      // 4. Find and delete duplicate posts (by comparing their exact full title / filename)
+      if (allPosts && allPosts.length > 0) {
+        const titleGroups = {};
+        allPosts.forEach(post => {
+          const key = post.title.toLowerCase().trim();
+          if (!titleGroups[key]) titleGroups[key] = [];
+          titleGroups[key].push(post);
+        });
+
+        for (const [, postsInGroup] of Object.entries(titleGroups)) {
+          if (postsInGroup.length > 1) {
+            result.posts.duplicatesFound += postsInGroup.length - 1;
+            const keep = postsInGroup[0];
+            const toDelete = postsInGroup.slice(1);
+            
+            for (const dup of toDelete) {
+              logger.info(`Merging duplicate post "${dup.title}" (ID: ${dup.id}) -> "${keep.title}" (ID: ${keep.id})`);
+
+              // ── Safe video-source merge ────────────────────────────────────────────────────
+              // A blind UPDATE can fail silently when keep already owns the same platform+video_id
+              // (unique constraint violation). The source then still points to dup.id, and when
+              // dup.id is deleted below, CASCADE removes it entirely — losing the video source
+              // and causing the next sync to re-create a duplicate post for that video.
+              // Fix: fetch both sides, DELETE conflicts from dup first, then UPDATE the rest.
+              const { data: keepVS } = await supabase
+                .from('post_video_sources')
+                .select('id, platform, video_id')
+                .eq('post_id', keep.id);
+
+              const { data: dupVS } = await supabase
+                .from('post_video_sources')
+                .select('id, platform, video_id')
+                .eq('post_id', dup.id);
+
+              if (dupVS && dupVS.length > 0) {
+                const keepKeys = new Set((keepVS || []).map(s => `${s.platform}:${s.video_id}`));
+                const conflicting = dupVS.filter(s => keepKeys.has(`${s.platform}:${s.video_id}`));
+                const moveable   = dupVS.filter(s => !keepKeys.has(`${s.platform}:${s.video_id}`));
+
+                // Delete sources that keep already has (they're true duplicates)
+                if (conflicting.length > 0) {
+                  await supabase.from('post_video_sources').delete().in('id', conflicting.map(s => s.id));
+                }
+                // Move unique sources from dup to keep
+                if (moveable.length > 0) {
+                  await supabase.from('post_video_sources').update({ post_id: keep.id }).in('id', moveable.map(s => s.id));
+                }
+              }
+
+              // ── Safe actor merge ───────────────────────────────────────────────────────────
+              const { data: keepActors } = await supabase
+                .from('post_actors')
+                .select('id, actor_id')
+                .eq('post_id', keep.id);
+
+              const { data: dupActors } = await supabase
+                .from('post_actors')
+                .select('id, actor_id')
+                .eq('post_id', dup.id);
+
+              if (dupActors && dupActors.length > 0) {
+                const keepActorIds = new Set((keepActors || []).map(a => a.actor_id));
+                const conflictingA = dupActors.filter(a => keepActorIds.has(a.actor_id));
+                const moveableA    = dupActors.filter(a => !keepActorIds.has(a.actor_id));
+
+                if (conflictingA.length > 0) {
+                  await supabase.from('post_actors').delete().in('id', conflictingA.map(a => a.id));
+                }
+                if (moveableA.length > 0) {
+                  await supabase.from('post_actors').update({ post_id: keep.id }).in('id', moveableA.map(a => a.id));
+                }
+              }
+
+              // Categories have no unique constraint issue — simple update is safe
+              await supabase.from('post_categories').update({ post_id: keep.id }).eq('post_id', dup.id);
+
+              // Delete the duplicate post (now safe: all its sources have been moved or deleted)
+              await supabase.from('posts').delete().eq('id', dup.id);
+              result.posts.deleted++;
+            }
+          }
+        }
+      }
+
+      // 5. Find and delete duplicate channels (by name, case-insensitive)
+      const { data: currentChannels } = await supabase
+        .from('channels')
+        .select('id, name');
+
+      if (currentChannels && currentChannels.length > 0) {
+        const channelGroups = {};
+        currentChannels.forEach(ch => {
+          const name = ch.name.toLowerCase().trim();
+          if (!name) return;
+          if (!channelGroups[name]) channelGroups[name] = [];
+          channelGroups[name].push(ch);
+        });
+
+        for (const [, channels] of Object.entries(channelGroups)) {
+          if (channels.length > 1) {
+            result.channels.duplicatesFound += channels.length - 1;
+            const keep = channels[0];
+            const toDelete = channels.slice(1);
+            for (const dup of toDelete) {
+              await supabase.from('posts').update({ channel_id: keep.id }).eq('channel_id', dup.id);
+              await supabase.from('channels').delete().eq('id', dup.id);
+              result.channels.deleted++;
+            }
+          }
+        }
+      }
+
+      // 6. Find and delete duplicate actors (by name, case-insensitive)
+      const { data: allActors } = await supabase
+        .from('actors')
+        .select('id, name');
+
+      if (allActors && allActors.length > 0) {
+        const actorGroups = {};
+        allActors.forEach(act => {
+          const name = act.name.toLowerCase().trim();
+          if (!name) return;
+          if (!actorGroups[name]) actorGroups[name] = [];
+          actorGroups[name].push(act);
+        });
+
+        for (const [, actors] of Object.entries(actorGroups)) {
+          if (actors.length > 1) {
+            result.actors.duplicatesFound += actors.length - 1;
+            const keep = actors[0];
+            const toDelete = actors.slice(1);
+            for (const dup of toDelete) {
+              await supabase.from('post_actors').update({ actor_id: keep.id }).eq('actor_id', dup.id);
+              await supabase.from('actors').delete().eq('id', dup.id);
+              result.actors.deleted++;
+            }
+          }
+        }
+      }
+
+      // 7. Find and delete duplicate categories (by name, case-insensitive)
+      const { data: allCategories } = await supabase
+        .from('categories')
+        .select('id, name');
+
+      if (allCategories && allCategories.length > 0) {
+        const catGroups = {};
+        allCategories.forEach(cat => {
+          const name = cat.name.toLowerCase().trim();
+          if (!name) return;
+          if (!catGroups[name]) catGroups[name] = [];
+          catGroups[name].push(cat);
+        });
+
+        for (const [, categories] of Object.entries(catGroups)) {
+          if (categories.length > 1) {
+            result.categories.duplicatesFound += categories.length - 1;
+            const keep = categories[0];
+            const toDelete = categories.slice(1);
+            for (const dup of toDelete) {
+              await supabase.from('post_categories').update({ category_id: keep.id }).eq('category_id', dup.id);
+              await supabase.from('posts').update({ category_id: keep.id }).eq('category_id', dup.id);
+              await supabase.from('categories').delete().eq('id', dup.id);
+              result.categories.deleted++;
+            }
+          }
+        }
+      }
+
+      // 8. Find and delete duplicate post_actors (same post_id + actor_id)
+      const { data: allPostActors } = await supabase
+        .from('post_actors')
+        .select('post_id, actor_id');
+
+      if (allPostActors && allPostActors.length > 0) {
+        const pasByPost = {};
+        allPostActors.forEach(pa => {
+          if (!pasByPost[pa.post_id]) {
+            pasByPost[pa.post_id] = { unique: new Set(), count: 0 };
+          }
+          pasByPost[pa.post_id].unique.add(pa.actor_id);
+          pasByPost[pa.post_id].count++;
+        });
+
+        for (const [postId, info] of Object.entries(pasByPost)) {
+          if (info.count > info.unique.size) {
+            const dupCount = info.count - info.unique.size;
+            result.postActors.duplicatesFound += dupCount;
+            await supabase.from('post_actors').delete().eq('post_id', postId);
+            const inserts = Array.from(info.unique).map(actorId => ({ post_id: postId, actor_id: actorId }));
+            if (inserts.length > 0) {
+              await supabase.from('post_actors').insert(inserts);
+            }
+            result.postActors.deleted += dupCount;
+          }
+        }
+      }
+
+      // 9. Find and delete duplicate post_video_sources (same post_id + platform + video_id)
+      const { data: allPVS } = await supabase
+        .from('post_video_sources')
+        .select('id, post_id, platform, video_id');
+
+      if (allPVS && allPVS.length > 0) {
+        const seen = new Map();
+        const dupIds = [];
+        allPVS.forEach(pvs => {
+          const key = `${pvs.post_id}:${pvs.platform}:${pvs.video_id}`;
+          if (seen.has(key)) {
+            dupIds.push(pvs.id);
+          } else {
+            seen.set(key, true);
+          }
+        });
+        if (dupIds.length > 0) {
+          result.postVideoSources.duplicatesFound = dupIds.length;
+          await supabase.from('post_video_sources').delete().in('id', dupIds);
+          result.postVideoSources.deleted = dupIds.length;
+        }
+      }
+
+      // Invalidate all caches
+      cacheService.flushAll();
+      await cacheService.warmCache();
+
+      const totalFound = result.posts.duplicatesFound + result.channels.duplicatesFound + result.actors.duplicatesFound + result.categories.duplicatesFound + result.postActors.duplicatesFound + result.postVideoSources.duplicatesFound;
+      const totalDeleted = result.posts.deleted + result.channels.deleted + result.actors.deleted + result.categories.deleted + result.postActors.deleted + result.postVideoSources.deleted;
+
+      logger.info(`Duplicates found: ${totalFound}, Deleted: ${totalDeleted}`, result);
+      logger.info('=== DELETE DUPLICATES COMPLETE ===');
+
+      return reply.send({
+        success: true,
+        data: result,
+        message: `Found ${totalFound} duplicates, deleted ${totalDeleted}`
+      });
+    } catch (error) {
+      logger.error('Error deleting duplicates', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to delete duplicates: ' + error.message
+      });
+    }
+  });
+
+  // ─── Diagnostic: break down where all posts come from ────────────────────────
+  fastify.get('/api/admin/posts/diagnose', async (request, reply) => {
+    try {
+      logger.info('=== POSTS DIAGNOSTIC ===');
+
+      // 1. Fetch all posts (paginated)
+      let allPosts = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('id, title, created_at')
+          .range(from, from + step - 1)
+          .order('created_at', { ascending: true });
+        if (error || !data || data.length === 0) { hasMore = false; break; }
+        allPosts = allPosts.concat(data);
+        if (data.length < step) hasMore = false; else from += step;
+      }
+
+      // 2. Fetch all video sources (paginated)
+      let allSources = [];
+      from = 0; hasMore = true;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('post_video_sources')
+          .select('id, post_id, platform, video_id')
+          .range(from, from + step - 1);
+        if (error || !data || data.length === 0) { hasMore = false; break; }
+        allSources = allSources.concat(data);
+        if (data.length < step) hasMore = false; else from += step;
+      }
+
+      // 3. Build post → platforms map
+      const postPlatforms = {}; // postId -> Set<platform>
+      const postSources   = {}; // postId -> [{ platform, video_id }]
+      for (const src of allSources) {
+        if (!postPlatforms[src.post_id]) postPlatforms[src.post_id] = new Set();
+        postPlatforms[src.post_id].add(src.platform);
+        if (!postSources[src.post_id]) postSources[src.post_id] = [];
+        postSources[src.post_id].push({ platform: src.platform, video_id: src.video_id });
+      }
+
+      // 4. Find duplicate video_ids across posts
+      const videoIdToPostIds = {}; // "platform:video_id" -> [postId, ...]
+      for (const src of allSources) {
+        const key = `${src.platform}:${src.video_id}`;
+        if (!videoIdToPostIds[key]) videoIdToPostIds[key] = [];
+        videoIdToPostIds[key].push(src.post_id);
+      }
+      const duplicateVideoSources = Object.entries(videoIdToPostIds)
+        .filter(([, postIds]) => new Set(postIds).size > 1)
+        .map(([key, postIds]) => ({ videoKey: key, postIds: [...new Set(postIds)] }));
+
+      // 5. Find duplicate post titles
+      const titleGroups = {};
+      for (const post of allPosts) {
+        const key = post.title.toLowerCase().trim();
+        if (!titleGroups[key]) titleGroups[key] = [];
+        titleGroups[key].push(post.id);
+      }
+      const duplicateTitleGroups = Object.entries(titleGroups)
+        .filter(([, ids]) => ids.length > 1)
+        .map(([title, ids]) => ({ title, count: ids.length, postIds: ids }));
+
+      // 6. Categorize posts
+      const seekOnly      = allPosts.filter(p => postPlatforms[p.id]?.has('seekstreaming') && !postPlatforms[p.id]?.has('streamtape'));
+      const streamtapeOnly = allPosts.filter(p => postPlatforms[p.id]?.has('streamtape') && !postPlatforms[p.id]?.has('seekstreaming'));
+      const both          = allPosts.filter(p => postPlatforms[p.id]?.has('seekstreaming') && postPlatforms[p.id]?.has('streamtape'));
+      const noSources     = allPosts.filter(p => !postSources[p.id] || postSources[p.id].length === 0);
+
+      // 7. Count unique SeekStreaming and Streamtape video_ids
+      const uniqueSeekIds      = new Set(allSources.filter(s => s.platform === 'seekstreaming').map(s => s.video_id));
+      const uniqueStreamtapeIds = new Set(allSources.filter(s => s.platform === 'streamtape').map(s => s.video_id));
+
+      const result = {
+        totalPosts: allPosts.length,
+        totalVideoSources: allSources.length,
+        uniqueSeekStreamingVideos: uniqueSeekIds.size,
+        uniqueStreamtapeVideos: uniqueStreamtapeIds.size,
+        postBreakdown: {
+          seekStreamingOnly: seekOnly.length,
+          streamtapeOnly: streamtapeOnly.length,
+          bothPlatforms: both.length,
+          noVideoSources: noSources.length
+        },
+        duplicates: {
+          postsWithDuplicateTitles: duplicateTitleGroups.length,
+          totalDuplicatePostCount: duplicateTitleGroups.reduce((sum, g) => sum + g.count - 1, 0),
+          videoSourcesSharedAcrossPosts: duplicateVideoSources.length,
+          examples: duplicateTitleGroups.slice(0, 5).map(g => ({
+            title: g.title,
+            count: g.count
+          }))
+        },
+        orphanedPosts: noSources.slice(0, 10).map(p => ({ id: p.id, title: p.title })),
+        streamtapeOnlySample: streamtapeOnly.slice(0, 5).map(p => ({
+          id: p.id,
+          title: p.title,
+          sources: postSources[p.id] || []
+        }))
+      };
+
+      logger.info('Diagnostic result:', JSON.stringify(result, null, 2));
+      logger.info('=== DIAGNOSTIC COMPLETE ===');
+
+      return reply.send({ success: true, data: result });
+    } catch (error) {
+      logger.error('Diagnostic error:', error);
+      return reply.status(500).send({ success: false, message: error.message });
+    }
+  });
+};

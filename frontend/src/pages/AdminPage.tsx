@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signOut, getSettings, saveSettings } from '@/lib/store';
-import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, adminLogout, fetchSupportRequests, deleteSupportRequest } from '@/lib/api';
+import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, deleteDuplicates, adminLogout, fetchSupportRequests, deleteSupportRequest } from '@/lib/api';
 import type { SupportRequest } from '@/lib/api';
 import Loader from '@/components/Loader';
 
 import type { Channel, Actor, Category, Post, VideoSourceInput } from '@/lib/types';
-import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles, MessageSquare } from 'lucide-react';
+import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles, MessageSquare, CopyX } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AdminTab = 'dashboard' | 'posts' | 'channels' | 'actors' | 'categories' | 'settings' | 'player-settings' | 'support';
@@ -795,12 +795,12 @@ export default function AdminPage() {
   };
 
   const handleDeletePost = async (id: string) => {
-    if (!window.confirm('Delete this post from GitHub?')) return;
+    if (!window.confirm('Delete this post?')) return;
     try {
       const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { method: 'DELETE', credentials: 'include' });
       const json = await resp.json();
-      if (json.success) { toast.success('Post deleted from GitHub ✓'); fetchBackendPosts(); }
-      else toast.error(json.error || 'Delete failed');
+      if (json.success) { toast.success('Post deleted ✓'); fetchBackendPosts(); }
+      else toast.error(json.message || 'Delete failed');
     } catch { toast.error('Could not reach backend'); }
   };
 
@@ -826,7 +826,7 @@ export default function AdminPage() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected posts from GitHub?`)) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected posts?`)) return;
     try {
       const idsArray = Array.from(selectedIds);
       const resp = await fetch(`${API_BASE}/api/admin/posts`, {
@@ -930,7 +930,7 @@ export default function AdminPage() {
 
   const handleCleanAllTitles = async () => {
 
-    if (!window.confirm(`This will permanently remove .mp4, .mkv, .avi, .mov, .wmv from ALL post titles in GitHub. Continue?`)) return;
+    if (!window.confirm(`This will permanently remove .mp4, .mkv, .avi, .mov, .wmv from ALL post titles. Continue?`)) return;
     
     setLoadingBackend(true);
     
@@ -947,7 +947,7 @@ export default function AdminPage() {
         toast.success(result.message, {
           description: `${result.updated} updated, ${result.skipped} already clean`,
         });
-        fetchBackendPosts(); // Refresh display with clean data from GitHub
+        fetchBackendPosts(); // Refresh display with clean data
       } else {
         toast.error(result.error || 'Title cleaning failed');
       }
@@ -968,7 +968,7 @@ export default function AdminPage() {
     try {
       const r = await saveChannel(ch);
       if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Channel updated in GitHub ✓' : 'Channel added to GitHub ✓');
+        toast.success(modal?.mode === 'edit' ? 'Channel updated ✓' : 'Channel added ✓');
         fetchChannels().then(res => { if (res.success) setChs(res.data); }).catch(() => {});
         setModal(null);
       } else toast.error('Save failed');
@@ -976,7 +976,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteChannel = async (id: string) => {
-    if (!window.confirm('Delete this channel from GitHub?')) return;
+    if (!window.confirm('Delete this channel?')) return;
     try {
       const r = await deleteChannel(id);
       if (r.success) {
@@ -1002,7 +1002,7 @@ export default function AdminPage() {
     try {
       const r = await saveActor(actor);
       if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Actor updated in GitHub ✓' : 'Actor added to GitHub ✓');
+        toast.success(modal?.mode === 'edit' ? 'Actor updated ✓' : 'Actor added ✓');
         // Refresh local admin state
         fetchActors().then(res => { if (res.success) setActs(res.data); }).catch(() => {});
         // Invalidate React Query cache so ActorsPage/ActorPage/SearchPage immediately show updated crop
@@ -1013,7 +1013,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteActor = async (id: string) => {
-    if (!window.confirm('Delete this actor from GitHub?')) return;
+    if (!window.confirm('Delete this actor?')) return;
     try {
       const r = await deleteActor(id);
       if (r.success) {
@@ -1242,6 +1242,37 @@ export default function AdminPage() {
                 {buttonLoading.clean ? <Loader size="small" /> : <><Sparkles className="w-4 h-4" /> Format File Fix</>}
               </button>
               <button onClick={async () => {
+                if (!window.confirm('Remove duplicate posts, channels, actors, and categories? This will keep the oldest entry and delete the rest.')) return;
+                setButtonLoading(prev => ({ ...prev, duplicates: true }));
+                try {
+                  const result = await deleteDuplicates();
+                  if (result.success) {
+                    const d = result.data;
+                    const parts = [];
+                    if (d.posts?.deleted > 0) parts.push(`${d.posts.deleted} posts`);
+                    if (d.channels?.deleted > 0) parts.push(`${d.channels.deleted} channels`);
+                    if (d.actors?.deleted > 0) parts.push(`${d.actors.deleted} actors`);
+                    if (d.categories?.deleted > 0) parts.push(`${d.categories.deleted} categories`);
+                    if (d.postActors?.deleted > 0) parts.push(`${d.postActors.deleted} actor links`);
+                    if (d.postVideoSources?.deleted > 0) parts.push(`${d.postVideoSources.deleted} video sources`);
+                    const msg = parts.length > 0 ? `Deleted ${parts.join(', ')} ✓` : 'No duplicates found ✓';
+                    toast.success(msg);
+                    refreshAll();
+                  } else {
+                    toast.error(result.message || 'Failed to delete duplicates');
+                  }
+                } catch (error) {
+                  console.error('Delete duplicates error:', error);
+                  toast.error('Could not reach backend');
+                } finally {
+                  setButtonLoading(prev => ({ ...prev, duplicates: false }));
+                }
+              }}
+                disabled={buttonLoading.duplicates}
+                className="flex items-center gap-2 px-5 py-2.5 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-[20px] text-sm font-medium hover:bg-yellow-500/30 transition-all shadow-lg hover:shadow-yellow-500/30 disabled:opacity-50 min-w-[140px] justify-center">
+                {buttonLoading.duplicates ? <Loader size="small" /> : <><CopyX className="w-4 h-4" /> Delete Duplicates</>}
+              </button>
+              <button onClick={async () => {
                 setButtonLoading(prev => ({ ...prev, deleteAll: true }));
                 await handleDeleteAllPosts();
                 setButtonLoading(prev => ({ ...prev, deleteAll: false }));
@@ -1304,9 +1335,9 @@ export default function AdminPage() {
                     </button>
                   </>
                 )}
-                <button onClick={() => { if (selectedIds.size === backendPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(backendPosts.map(p => p.id))); }}
+                <button onClick={() => { if (selectedIds.size === sortedPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(sortedPosts.map(p => p.id))); }}
                   className="px-4 py-2 rounded-[20px] bg-secondary text-secondary-foreground text-sm font-medium hover:bg-tertiary transition-colors">
-                  {selectedIds.size === backendPosts.length ? 'Deselect All' : 'Select All'}
+                  {selectedIds.size === sortedPosts.length && sortedPosts.length > 0 ? 'Deselect All' : 'Select All'}
                 </button>
                 <button onClick={fetchBackendPosts} title="Refresh" className="p-2 rounded-[20px] bg-secondary hover:bg-tertiary transition-colors">
                   <RefreshCw className={`w-4 h-4 text-secondary-foreground ${loadingBackend ? 'animate-spin' : ''}`} />
@@ -1358,8 +1389,8 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="p-3 w-8"><input type="checkbox" checked={selectedIds.size === backendPosts.length && backendPosts.length > 0}
-                      onChange={() => { if (selectedIds.size === backendPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(backendPosts.map(p => p.id))); }}
+                    <th className="p-3 w-8"><input type="checkbox" checked={selectedIds.size === sortedPosts.length && sortedPosts.length > 0}
+                      onChange={() => { if (selectedIds.size === sortedPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(sortedPosts.map(p => p.id))); }}
                       className="accent-accent w-4 h-4" /></th>
                     <th className="text-left p-3 text-muted-foreground font-medium">Thumbnail</th>
                     <th className="text-left p-3 text-muted-foreground font-medium">Title</th>
