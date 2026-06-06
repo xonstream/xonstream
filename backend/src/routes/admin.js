@@ -582,8 +582,6 @@ module.exports = async (fastify, opts) => {
         updateFields.category_id = updateData.category === '' ? null : updateData.category;
         logger.info(`Updating post ${id} category to:`, updateFields.category_id);
       }
-      // Always stamp updated_at so the homepage can sort by recency of edits
-      updateFields.updated_at = new Date().toISOString();
 
       logger.info(`Updating post ${id} with fields:`, Object.keys(updateFields));
       logger.info(`Update fields data:`, JSON.stringify(updateFields, null, 2));
@@ -1908,7 +1906,7 @@ module.exports = async (fastify, opts) => {
       // Actually update the posts
       const { error: updateError } = await supabase
         .from('posts')
-        .update({ channel_id: targetChannelId, updated_at: new Date().toISOString() })
+        .update({ channel_id: targetChannelId })
         .in('id', posts.map(p => p.id));
       
       if (updateError) {
