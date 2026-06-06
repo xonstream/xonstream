@@ -10,7 +10,6 @@ interface HeaderProps {
 
 export default function Header({ onToggleSidebar }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [isTyping, setIsTyping] = useState(false); // Track if user is actively typing
   const [isDark, setIsDark] = useState(() => {
     const theme = getTheme();
     console.log('Header mounted, theme from localStorage:', theme);
@@ -25,7 +24,6 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const location = useLocation();
   const user = getCurrentUser();
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync theme state on mount and when it changes externally
   useEffect(() => {
@@ -53,46 +51,41 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
     toast.success(`${newTheme === 'dark' ? '🌙 Dark' : '☀️ Light'} mode enabled`);
   };
 
-  const prevPathnameRef = useRef(location.pathname);
-
-  // Sync search input with URL query parameter ONLY when navigating TO search page
-  // NEVER sync while user is actively typing
+  // Sync search input with URL query parameter when navigating or URL changes and input is not focused
   useEffect(() => {
-    // If user is typing, DO NOT sync from URL (prevents input clearing)
-    if (isTyping) {
+    const activeEl = document.activeElement;
+    const isInputFocused = activeEl && (activeEl.id === 'desktop-search-input' || activeEl.id === 'mobile-search-input');
+    
+    // If the input is currently focused, do not sync (prevents cursor jumping/input clearing while typing)
+    if (isInputFocused) {
       return;
     }
     
-    // Check if we just navigated to a different page
-    const justNavigated = prevPathnameRef.current !== location.pathname;
-    prevPathnameRef.current = location.pathname;
+    const pathParts = location.pathname.split('/').filter(Boolean);
+    const lastPart = pathParts[pathParts.length - 1];
+    const isOnSearchPage = lastPart === 'search';
     
-    // Only sync when we navigate to search page from a different page
-    if (justNavigated) {
-      const pathParts = location.pathname.split('/').filter(Boolean);
-      const lastPart = pathParts[pathParts.length - 1];
-      const isOnSearchPage = lastPart === 'search';
-      
-      if (isOnSearchPage) {
-        const params = new URLSearchParams(location.search);
-        const queryParam = params.get('q') || '';
+    if (isOnSearchPage) {
+      const params = new URLSearchParams(location.search);
+      const queryParam = params.get('q') || '';
+      if (searchQuery !== queryParam) {
         setSearchQuery(queryParam);
-      } else {
-        // Clear search when leaving search page
+      }
+    } else {
+      if (searchQuery !== '') {
         setSearchQuery('');
       }
     }
-  }, [location.pathname, location.search, isTyping]);
+  }, [location.pathname, location.search]);
 
   // DISABLED: Live search causes infinite loop
   // Search only works on Enter key or search button click
 
-  const handleLogoClick = (e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleLogoClick = () => {
     // Clear search query
     setSearchQuery('');
-    // Navigate to homepage with no category (clears URL params)
-    navigate('/', { replace: false });
+    // Scroll to the top of the page
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -133,7 +126,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
       {mobileSearchOpen && (
         <div className="absolute inset-0 z-[100] h-12 bg-background flex items-center px-3 gap-2 animate-fade-in sm:hidden">
           <form onSubmit={handleSearch} className="flex-1 flex items-center bg-secondary rounded-[24px] border border-border overflow-hidden">
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            <input type="text" id="mobile-search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search..." autoFocus
               className="flex-1 bg-transparent px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" />
             <button type="submit" className="px-4 py-2 bg-tertiary hover:bg-border transition-colors border-l border-border">
@@ -151,17 +144,17 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
         <button onClick={onToggleSidebar} className="p-2 rounded-full hover:bg-secondary transition-colors">
           <Menu className="w-5 h-5 text-foreground" />
         </button>
-        <button onClick={handleLogoClick} className="flex items-center gap-1.5">
+        <Link to="/" onClick={handleLogoClick} className="flex items-center gap-1.5">
           <img src="/siteicon.ico" alt="XON STREAM Logo" className="w-6 h-6 sm:w-7 sm:h-7" />
           <span className="text-foreground font-bold text-base sm:text-lg hidden sm:inline">XON STREAM</span>
           <span className="text-foreground font-bold text-base sm:hidden">XON STREAM</span>
-        </button>
+        </Link>
       </div>
 
       {/* Center - Search (desktop) */}
       <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-auto hidden sm:flex items-center">
         <div className="flex flex-1 items-center bg-secondary rounded-[24px] border border-border overflow-hidden">
-          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+          <input type="text" id="desktop-search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search..." className="flex-1 bg-transparent px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" />
           <button type="submit" className="px-4 py-2 bg-tertiary hover:bg-border transition-colors border-l border-border">
             <Search className="w-4 h-4 text-foreground" />

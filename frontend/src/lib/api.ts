@@ -1,72 +1,28 @@
 import type { Post, VideoLink, VideoSource, PaginatedResponse, Channel, Actor } from './types';
 
-// Automatic environment detection for backend API URL
-// This detects where the frontend is running and selects the correct backend
-const getApiBaseUrl = (): string => {
-  // 1. Check if environment variable is explicitly set (highest priority)
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) {
-    return envUrl;
-  }
+// Backend API URL from environment variable
+// This MUST be set in .env file - no hardcoded fallbacks for security
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-  // 2. Auto-detect based on hostname (runtime detection)
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    
-    // Localhost development
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:7860';
-    }
-    
-    // Cloudflare Pages production (xonstream.pages.dev)
-    // Or any other production domain
-    if (hostname.includes('pages.dev') || hostname.includes('cloudflare')) {
-      return 'https://xonstream-xonstream.hf.space';
-    }
-    
-    // Hugging Face Spaces (if frontend is also hosted there)
-    if (hostname.includes('hf.space')) {
-      return 'https://xonstream-xonstream.hf.space';
-    }
-  }
-
-  // 3. Fallback: try to use environment variable or default to localhost
-  return envUrl || 'http://localhost:7860';
-};
-
-const API_BASE_URL = getApiBaseUrl();
-
-// Log which backend URL is being used (helpful for debugging)
-if (typeof window !== 'undefined' && import.meta.env.DEV) {
-  console.log(`[API] Using backend URL: ${API_BASE_URL}`);
+if (!API_BASE_URL) {
+  console.error('VITE_API_BASE_URL is not set in environment variables');
 }
 
-// Export API base
-export const API_BASE = API_BASE_URL;
+// Export API base - will be undefined if env var is not set
+export const API_BASE = API_BASE_URL || '';
 
 // Admin authentication helpers
-export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string; token?: string }> {
+export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string }> {
   try {
-    console.log('[ADMIN LOGIN] Attempting login to:', `${API_BASE}/api/admin/login`);
-    console.log('[ADMIN LOGIN] Username:', username);
-    console.log('[ADMIN LOGIN] Password length:', password.length);
-    
     const res = await fetch(`${API_BASE}/api/admin/login`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    
-    console.log('[ADMIN LOGIN] Response status:', res.status);
-    console.log('[ADMIN LOGIN] Response OK:', res.ok);
-    
-    const json = await res.json();
-    console.log('[ADMIN LOGIN] Response body:', json);
-    
-    return json;
+    return res.json();
   } catch (error) {
-    console.error('[ADMIN LOGIN] Fetch failed:', error);
+    console.error('Admin login failed');
     return { success: false, message: 'Login failed. Please try again.' };
   }
 }
@@ -107,24 +63,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 // ─── Posts ────────────────────────────────────────────────────────────────────
 
 export async function fetchAdminPosts(): Promise<{ success: boolean; data: Post[] }> {
-  // Get token from localStorage
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-  
-  console.log('[API] Fetching admin posts with token:', token ? 'YES' : 'NO');
-  
   // Use dedicated admin endpoint to get all posts with full details
   const res = await fetch(`${API_BASE}/api/admin/posts`, {
     credentials: 'include',
-    headers: token ? {
-      'Authorization': `Bearer ${token}`
-    } : {},
   });
-  
-  console.log('[API] Admin posts response status:', res.status);
-  
   const json = await res.json();
-  console.log('[API] Admin posts response:', json);
-  
   return json;
 }
 
@@ -176,14 +119,6 @@ export async function fetchChannels(): Promise<{ success: boolean; data: Channel
   return apiFetch('/api/channels');
 }
 
-// Helper to get admin auth headers
-function getAdminHeaders(): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-  return token ? {
-    'Authorization': `Bearer ${token}`
-  } : {};
-}
-
 export async function saveChannel(ch: Channel): Promise<{ success: boolean }> {
   // Check if this is an existing channel (has a valid UUID-like ID)
   const isEdit = ch.id && !ch.id.startsWith('ch-');
@@ -193,10 +128,7 @@ export async function saveChannel(ch: Channel): Promise<{ success: boolean }> {
   const res = await fetch(url, {
     method,
     credentials: 'include',
-    headers: { 
-      'Content-Type': 'application/json',
-      ...getAdminHeaders()
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(ch),
   });
   return res.json();
@@ -206,7 +138,6 @@ export async function deleteChannel(id: string): Promise<{ success: boolean }> {
   const res = await fetch(`${API_BASE}/api/admin/channels/${id}`, {
     method: 'DELETE',
     credentials: 'include',
-    headers: getAdminHeaders(),
   });
   return res.json();
 }
@@ -244,10 +175,7 @@ export async function saveActor(actor: Actor): Promise<{ success: boolean }> {
   const res = await fetch(url, {
     method,
     credentials: 'include',
-    headers: { 
-      'Content-Type': 'application/json',
-      ...getAdminHeaders()
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(actor),
   });
   return res.json();
@@ -257,7 +185,6 @@ export async function deleteActor(id: string): Promise<{ success: boolean }> {
   const res = await fetch(`${API_BASE}/api/admin/actors/${id}`, {
     method: 'DELETE',
     credentials: 'include',
-    headers: getAdminHeaders(),
   });
   return res.json();
 }
@@ -266,6 +193,7 @@ export async function deleteActor(id: string): Promise<{ success: boolean }> {
 
 export interface PlayerSettings {
   autoPlay: boolean;
+  defaultServer: 'SERVER_01' | 'SERVER_02';
   updatedAt: string;
 }
 
@@ -277,15 +205,12 @@ export async function fetchAdminPlayerSettings(): Promise<{ success: boolean; da
   return apiFetch(`/api/admin/settings/player`, { credentials: 'include' });
 }
 
-export async function updatePlayerSettings(autoPlay: boolean): Promise<{ success: boolean; message: string; data: PlayerSettings }> {
+export async function updatePlayerSettings(autoPlay: boolean, defaultServer: 'SERVER_01' | 'SERVER_02' = 'SERVER_01'): Promise<{ success: boolean; message: string; data: PlayerSettings }> {
   const res = await fetch(`${API_BASE}/api/admin/settings/player`, {
     method: 'PUT',
     credentials: 'include',
-    headers: { 
-      'Content-Type': 'application/json',
-      ...getAdminHeaders()
-    },
-    body: JSON.stringify({ autoPlay }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ autoPlay, defaultServer }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -315,10 +240,7 @@ export async function saveCategory(category: Category): Promise<{ success: boole
   const res = await fetch(url, {
     method,
     credentials: 'include',
-    headers: { 
-      'Content-Type': 'application/json',
-      ...getAdminHeaders()
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(category),
   });
   if (!res.ok) {
@@ -332,7 +254,6 @@ export async function deleteCategory(id: string): Promise<{ success: boolean; me
   const res = await fetch(`${API_BASE}/api/admin/categories/${id}`, {
     method: 'DELETE',
     credentials: 'include',
-    headers: getAdminHeaders(),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -342,11 +263,12 @@ export async function deleteCategory(id: string): Promise<{ success: boolean; me
 }
 
 // Admin sync and posts
-export async function syncPosts(): Promise<{ success: boolean; data?: any; message?: string }> {
+export async function syncPosts(startPage?: number, endPage?: number): Promise<{ success: boolean; data?: any; message?: string }> {
   const res = await fetch(`${API_BASE}/api/admin/sync`, {
     method: 'POST',
     credentials: 'include',
-    headers: getAdminHeaders(),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ startPage, endPage }),
   });
   return res.json();
 }
@@ -355,16 +277,53 @@ export async function deleteAllPosts(): Promise<{ success: boolean; message?: st
   const res = await fetch(`${API_BASE}/api/admin/posts/all`, {
     method: 'DELETE',
     credentials: 'include',
-    headers: getAdminHeaders(),
   });
   return res.json();
 }
 
-export async function flushCache(): Promise<{ success: boolean; message?: string; data?: { thumbnailsUpdated: number; thumbnailErrors: number } }> {
-  const res = await fetch(`${API_BASE}/api/admin/cache/flush`, {
+// ─── Support Requests ────────────────────────────────────────────────────────
+export interface SupportRequest {
+  key: string;
+  fullName: string;
+  email: string;
+  description: string;
+  status: string;
+  createdAt: string;
+}
+
+export async function submitSupportRequest(fullName: string, email: string, description: string): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${API_BASE}/api/public/support`, {
     method: 'POST',
-    credentials: 'include',
-    headers: getAdminHeaders(),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fullName, email, description }),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || body.error || `API error ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchSupportRequests(): Promise<{ success: boolean; data: SupportRequest[] }> {
+  const res = await fetch(`${API_BASE}/api/admin/support`, {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || body.error || `API error ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteSupportRequest(key: string): Promise<{ success: boolean; message?: string }> {
+  const params = new URLSearchParams({ key });
+  const res = await fetch(`${API_BASE}/api/admin/support?${params.toString()}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || body.error || `API error ${res.status}`);
+  }
   return res.json();
 }

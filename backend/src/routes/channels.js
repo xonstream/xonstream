@@ -3,33 +3,7 @@ const cacheService = require('../services/cacheService');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
-// Filter out unwanted category names
-const BLOCKED_CATEGORY_PATTERNS = [
-  'example', 'yeh', 'mp4', 'free full video', 'full video', 'free video',
-  '⭐️', '⭐', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp'
-];
-
-function isBlockedCategory(name) {
-  if (!name) return true;
-  const lower = name.toLowerCase();
-  return BLOCKED_CATEGORY_PATTERNS.some(pattern => lower.includes(pattern));
-}
-
-function filterCategories(categories) {
-  return (categories || []).filter(c => !isBlockedCategory(c));
-}
-
-// Helper function to build full thumbnail URL from path
-function buildThumbnailUrl(thumbnailPath) {
-  if (!thumbnailPath) return '';
-  if (thumbnailPath.startsWith('http://') || thumbnailPath.startsWith('https://')) {
-    return thumbnailPath;
-  }
-  const playerDomain = env.SEEKSTREAMING_PLAYER_DOMAIN || 'seekstreaming.com';
-  const domain = playerDomain.startsWith('http') ? playerDomain : `https://${playerDomain}`;
-  const path = thumbnailPath.startsWith('/') ? thumbnailPath : `/${thumbnailPath}`;
-  return `${domain}${path}`;
-}
+const { getPostThumbnail, getPostPreview } = require('../utils/postHelpers');
 
 module.exports = async (fastify, opts) => {
   fastify.get('/api/channels', async (request, reply) => {
@@ -253,16 +227,15 @@ module.exports = async (fastify, opts) => {
         }
       }
 
-      const formattedPosts = (validPosts || []).map(post => {
+      const formattedPosts = await Promise.all((validPosts || []).map(async post => {
         // Map video sources from the joined table
         const videoSources = (post.post_video_sources || []).map(vs => ({
           platform: vs.platform,
           videoId: vs.video_id
         }));
         
-        // Get categories from map and filter out unwanted ones
-        const rawCategories = categoriesMap[post.id] || [];
-        const categories = filterCategories(rawCategories);
+        // Get categories from map
+        const categories = categoriesMap[post.id] || [];
         
         // CRITICAL FIX: Use ONLY the actual channel from the post's relationship
         // NO FALLBACK to current page's channel - this was causing wrong channel names!
@@ -285,11 +258,17 @@ module.exports = async (fastify, opts) => {
         
         logger.info(`Post "${post.title}" - Actual channel: ${postChannelName} (ID: ${post.channel?.id}), post.channel_id: ${post.channel_id}`);
         
+        const [thumbnail, previewUrl] = await Promise.all([
+          getPostThumbnail(post),
+          getPostPreview(post)
+        ]);
+
         return {
           id: post.id,
           title: post.title,
           description: post.description || '',
-          thumbnail: buildThumbnailUrl(post.thumbnail),
+          thumbnail: thumbnail,
+          previewUrl: previewUrl,
           channelName: postChannelName,
           channelLogo: postChannelLogo,
           categories: categories,
@@ -299,7 +278,7 @@ module.exports = async (fastify, opts) => {
           createdAt: post.created_at,
           actorCount: post.post_actors ? post.post_actors.length : 0
         };
-      });
+      }));
 
       const result = {
         posts: formattedPosts,

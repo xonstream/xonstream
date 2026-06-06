@@ -15,8 +15,24 @@ export default function HomePage() {
   // Sync category from URL when navigating to homepage
   useEffect(() => {
     setCategory(categoryFromUrl);
-    setPage(1);
   }, [categoryFromUrl]);
+
+  // Sync page from URL query parameter (resets to page 1 if not present)
+  useEffect(() => {
+    const p = parseInt(searchParams.get('page') || '1', 10);
+    setPage(p);
+  }, [searchParams]);
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    const params = new URLSearchParams(searchParams);
+    if (newPage > 1) {
+      params.set('page', newPage.toString());
+    } else {
+      params.delete('page');
+    }
+    setSearchParams(params);
+  };
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['posts', page, category],
@@ -91,7 +107,7 @@ export default function HomePage() {
           <Pagination
             currentPage={data.pagination.page}
             totalPages={data.pagination.totalPages}
-            onPageChange={setPage}
+            onPageChange={handlePageChange}
           />
         </>
       )}

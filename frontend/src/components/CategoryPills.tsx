@@ -12,26 +12,10 @@ export default function CategoryPills({ active, onSelect, categories = [] }: Cat
   const [showLeft, setShowLeft] = useState(false);
   const [showRight, setShowRight] = useState(true);
 
-  // Filter out unwanted labels/categories
-  const blockedPatterns = [
-    'example', 'yeh', 'mp4', 'free full video', 'full video', 'free video',
-    '⭐️', '⭐', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp'
-  ];
-  
-  const isBlocked = (name: string) => {
-    const lower = name.toLowerCase();
-    return blockedPatterns.some(pattern => lower.includes(pattern));
-  };
-
-  // Always include "All" as first option; filter out uncategorized/empty/blocked entries
+  // Always include "All" as first option; filter out uncategorized/empty entries
   const allCats = [
     { id: 'all', name: 'All' },
-    ...categories.filter(c => 
-      c.id !== 'all' && 
-      c.name && 
-      c.name.toLowerCase() !== 'uncategorized' &&
-      !isBlocked(c.name)
-    ),
+    ...categories.filter(c => c.id !== 'all' && c.name && c.name.toLowerCase() !== 'uncategorized'),
   ];
 
   // Don't render if no real categories added (only "All")

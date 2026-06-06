@@ -19,10 +19,19 @@ module.exports = async (fastify, opts) => {
     try {
       logger.info('Test sync endpoint called');
 
-      // Test SeekStreaming API
+      // Test Streamtape API
+      const streamtapeService = require('../services/streamtape');
       const seekstreamingService = require('../services/seekstreaming');
 
+      let streamtapeFiles = [];
       let seekstreamingVideos = [];
+
+      try {
+        streamtapeFiles = await streamtapeService.getAllFiles();
+        logger.info(`Streamtape API: Found ${streamtapeFiles.length} files`);
+      } catch (e) {
+        logger.error('Streamtape API error:', e.message);
+      }
 
       try {
         seekstreamingVideos = await seekstreamingService.getAllVideos();
@@ -33,6 +42,10 @@ module.exports = async (fastify, opts) => {
 
       return reply.send({
         success: true,
+        streamtape: {
+          fileCount: streamtapeFiles.length,
+          files: streamtapeFiles.slice(0, 3)
+        },
         seekstreaming: {
           videoCount: seekstreamingVideos.length,
           videos: seekstreamingVideos.slice(0, 3)
@@ -138,8 +151,6 @@ module.exports = async (fastify, opts) => {
   // Admin-specific endpoint to get all posts with full details
   fastify.get('/api/admin/posts', async (request, reply) => {
     try {
-      logger.info('[ADMIN POSTS] Fetching all posts for admin dashboard');
-      
       // Fetch posts with all relations (excluding category - we get it from post_categories)
       let { data: posts, error } = await supabase
         .from('posts')
@@ -152,20 +163,10 @@ module.exports = async (fastify, opts) => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        logger.error('[ADMIN POSTS] Error fetching posts from Supabase', error);
+        logger.error('Error fetching admin posts', error);
         return reply.status(500).send({
           success: false,
           message: 'Failed to fetch posts: ' + error.message
-        });
-      }
-      
-      logger.info(`[ADMIN POSTS] Fetched ${posts?.length || 0} posts from database`);
-      
-      if (!posts || posts.length === 0) {
-        logger.warn('[ADMIN POSTS] No posts found in database');
-        return reply.send({
-          success: true,
-          data: []
         });
       }
 
@@ -235,14 +236,12 @@ module.exports = async (fastify, opts) => {
         };
       });
 
-      logger.info(`[ADMIN POSTS] Returning ${formattedPosts.length} posts to frontend`);
-      
       return reply.send({
         success: true,
         data: formattedPosts
       });
     } catch (error) {
-      logger.error('[ADMIN POSTS] Unexpected error fetching admin posts', error);
+      logger.error('Error fetching admin posts', error);
       return reply.status(500).send({
         success: false,
         message: 'Failed to fetch posts: ' + (error.message || 'Unknown error')
@@ -250,116 +249,109 @@ module.exports = async (fastify, opts) => {
     }
   });
 
-  fastify.post('/api/admin/cache/flush', async (request, reply) => {
+  // Get all support requests
+  fastify.get('/api/admin/support', async (request, reply) => {
     try {
-      logger.info('Manual cache flush triggered by admin');
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .like('key', 'support_request:%');
 
-      // Step 1: Flush all cache
-      cacheService.flushAll();
-      logger.info('Cache flushed');
-
-      // Step 2: Fetch fresh thumbnails from SeekStreaming for all posts
-      const seekstreamingService = require('../services/seekstreaming');
-      let updatedCount = 0;
-      let errorCount = 0;
-
-      // Get all posts from database
-      const { data: posts, error: postsError } = await supabase
-        .from('posts')
-        .select('id, title, thumbnail')
-        .order('created_at', { ascending: false });
-
-      if (postsError) {
-        logger.error('Error fetching posts for thumbnail refresh', postsError);
-      } else if (posts && posts.length > 0) {
-        logger.info(`Refreshing thumbnails for ${posts.length} posts`);
-
-        // Get all videos from SeekStreaming
-        let seekVideos = [];
-        try {
-          seekVideos = await seekstreamingService.getAllVideos();
-          logger.info(`Fetched ${seekVideos.length} videos from SeekStreaming`);
-        } catch (seekError) {
-          logger.error('Failed to fetch videos from SeekStreaming', seekError);
-        }
-
-        // Process each post
-        for (const post of posts) {
-          try {
-            // Normalize post title for matching
-            const normalizedPostTitle = post.title
-              .replace(/[-_.()[\]{}]/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim()
-              .toLowerCase();
-
-            // Find matching video by normalized title
-            const matchingVideo = seekVideos.find(video => {
-              const normalizedVideoTitle = (video.name || '')
-                .replace(/[-_.()[\]{}]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .toLowerCase();
-              return normalizedVideoTitle === normalizedPostTitle;
-            });
-
-            if (matchingVideo) {
-              // Fetch video details to get fresh thumbnail
-              const videoDetail = await seekstreamingService.getVideoDetail(matchingVideo.id);
-
-              if (videoDetail && videoDetail.poster) {
-                const freshThumbnail = videoDetail.poster;
-
-                // Only update if thumbnail has changed
-                if (freshThumbnail !== post.thumbnail) {
-                  const { error: updateError } = await supabase
-                    .from('posts')
-                    .update({ thumbnail: freshThumbnail })
-                    .eq('id', post.id);
-
-                  if (updateError) {
-                    logger.error(`Failed to update thumbnail for post ${post.id}`, updateError);
-                    errorCount++;
-                  } else {
-                    logger.info(`Updated thumbnail for post "${post.title}" (${post.id})`);
-                    updatedCount++;
-                  }
-                }
-              }
-            }
-          } catch (postError) {
-            logger.error(`Error refreshing thumbnail for post ${post.id}`, postError);
-            errorCount++;
-          }
-        }
-
-        logger.info(`Thumbnail refresh complete: ${updatedCount} updated, ${errorCount} errors`);
+      if (error) {
+        logger.error('Error fetching support requests', error);
+        return reply.status(500).send({
+          success: false,
+          message: 'Failed to fetch support requests.'
+        });
       }
 
-      // Step 3: Rebuild cache from database with fresh thumbnails
-      await cacheService.rebuildFromDB();
-      logger.info('Cache rebuilt from database');
+      // Format data
+      const formatted = (data || []).map(row => ({
+        key: row.key,
+        fullName: row.value?.fullName || '',
+        email: row.value?.email || '',
+        description: row.value?.description || '',
+        status: row.value?.status || 'pending',
+        createdAt: row.value?.createdAt || row.created_at
+      })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       return reply.send({
         success: true,
-        message: `Cache flushed and rebuilt successfully. Updated ${updatedCount} thumbnails, ${errorCount} errors.`,
-        data: {
-          thumbnailsUpdated: updatedCount,
-          thumbnailErrors: errorCount
-        }
+        data: formatted
+      });
+    } catch (error) {
+      logger.error('Error fetching support requests', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to fetch support requests.'
+      });
+    }
+  });
+
+  // Delete/dismiss a support request
+  fastify.delete('/api/admin/support', async (request, reply) => {
+    try {
+      const { key } = request.query || {};
+
+      if (!key) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Key is required.'
+        });
+      }
+
+      const { error } = await supabase
+        .from('settings')
+        .delete()
+        .eq('key', key);
+
+      if (error) {
+        logger.error(`Error deleting support request ${key}`, error);
+        return reply.status(500).send({
+          success: false,
+          message: 'Failed to delete support request.'
+        });
+      }
+
+      return reply.send({
+        success: true,
+        message: 'Support request deleted successfully!'
+      });
+    } catch (error) {
+      logger.error('Error deleting support request', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to delete support request.'
+      });
+    }
+  });
+
+  fastify.post('/api/admin/cache/flush', async (request, reply) => {
+    try {
+      logger.info('Manual cache flush triggered by admin');
+      cacheService.flushAll();
+      await cacheService.rebuildFromDB();
+
+      return reply.send({
+        success: true,
+        message: 'Cache flushed and rebuilt successfully'
       });
     } catch (error) {
       logger.error('Error flushing cache', error);
       return reply.status(500).send({
         success: false,
-        message: 'Failed to flush cache: ' + (error.message || 'Unknown error')
+        message: 'Failed to flush cache'
       });
     }
   });
 
   fastify.post('/api/admin/sync', async (request, reply) => {
     try {
-      const result = await syncService.sync();
+      const { startPage, endPage } = request.body || {};
+      const result = await syncService.sync(
+        startPage ? parseInt(startPage, 10) : 1,
+        endPage ? parseInt(endPage, 10) : 20
+      );
 
       return reply.send({
         success: true,
@@ -906,66 +898,6 @@ module.exports = async (fastify, opts) => {
       return reply.status(500).send({
         success: false,
         message: 'Failed to delete post'
-      });
-    }
-  });
-
-  // Bulk delete multiple posts
-  fastify.delete('/api/admin/posts', async (request, reply) => {
-    try {
-      const { ids } = request.body || {};
-      
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
-        return reply.status(400).send({
-          success: false,
-          message: 'No post IDs provided'
-        });
-      }
-
-      logger.info(`=== BULK DELETE ===`);
-      logger.info(`Deleting ${ids.length} posts:`, ids);
-
-      let deletedCount = 0;
-      let errorCount = 0;
-
-      for (const id of ids) {
-        try {
-          // Delete related records first
-          await supabase.from('post_video_sources').delete().eq('post_id', id);
-          await supabase.from('post_actors').delete().eq('post_id', id);
-          await supabase.from('post_categories').delete().eq('post_id', id);
-
-          const { error } = await supabase
-            .from('posts')
-            .delete()
-            .eq('id', id);
-
-          if (error) {
-            logger.error(`Error deleting post ${id}:`, error);
-            errorCount++;
-          } else {
-            deletedCount++;
-          }
-        } catch (err) {
-          logger.error(`Exception deleting post ${id}:`, err);
-          errorCount++;
-        }
-      }
-
-      // Invalidate ALL post-related caches
-      cacheService.invalidateAllPostLists();
-
-      logger.info(`Bulk delete completed: ${deletedCount} deleted, ${errorCount} errors`);
-
-      return reply.send({
-        success: true,
-        message: `Deleted ${deletedCount} posts${errorCount > 0 ? `, ${errorCount} failed` : ''}`
-      });
-    } catch (error) {
-      logger.error('Error in bulk delete:', error);
-      return reply.status(500).send({
-        success: false,
-        message: 'Failed to bulk delete posts'
       });
     }
   });
@@ -1660,6 +1592,7 @@ module.exports = async (fastify, opts) => {
 
       const playerSettings = settings?.value || {
         autoPlay: true,
+        defaultServer: 'SERVER_01',
         updatedAt: new Date().toISOString()
       };
 
@@ -1679,10 +1612,11 @@ module.exports = async (fastify, opts) => {
   // Player Settings - Update (admin)
   fastify.put('/api/admin/settings/player', async (request, reply) => {
     try {
-      const { autoPlay } = request.body || {};
+      const { autoPlay, defaultServer } = request.body || {};
 
       const settingsValue = {
         autoPlay: autoPlay !== undefined ? autoPlay : true,
+        defaultServer: defaultServer || 'SERVER_01',
         updatedAt: new Date().toISOString()
       };
 
@@ -1745,6 +1679,7 @@ module.exports = async (fastify, opts) => {
 
       const playerSettings = settings?.value || {
         autoPlay: true,
+        defaultServer: 'SERVER_01',
         updatedAt: new Date().toISOString()
       };
 
@@ -1927,111 +1862,6 @@ module.exports = async (fastify, opts) => {
       return reply.status(500).send({
         success: false,
         message: 'Failed to fix channel posts'
-      });
-    }
-  });
-
-  // Deduplicate posts - remove duplicates with same title
-  fastify.post('/api/admin/posts/deduplicate', async (request, reply) => {
-    try {
-      logger.info('=== DEDUPLICATE POSTS ===');
-      
-      // Fetch all posts
-      const { data: posts, error } = await supabase
-        .from('posts')
-        .select('id, title');
-      
-      if (error) {
-        logger.error('Error fetching posts for deduplication:', error);
-        return reply.status(500).send({
-          success: false,
-          message: 'Failed to fetch posts'
-        });
-      }
-      
-      // Group posts by normalized title
-      const titleGroups = {};
-      posts.forEach(post => {
-        const normalized = (post.title || '').toLowerCase().trim();
-        if (!titleGroups[normalized]) {
-          titleGroups[normalized] = [];
-        }
-        titleGroups[normalized].push(post);
-      });
-      
-      // Find duplicates
-      const duplicates = [];
-      let duplicateCount = 0;
-      
-      Object.entries(titleGroups).forEach(([title, group]) => {
-        if (group.length > 1) {
-          duplicates.push({
-            title: title,
-            count: group.length,
-            ids: group.map(p => p.id)
-          });
-          // Keep first, delete rest
-          for (let i = 1; i < group.length; i++) {
-            duplicateCount++;
-          }
-        }
-      });
-      
-      logger.info(`Found ${duplicates.length} duplicate groups, ${duplicateCount} total duplicates`);
-      
-      // Delete duplicates (keep first one)
-      let deletedCount = 0;
-      let errorCount = 0;
-      
-      for (const dup of duplicates) {
-        // Keep first, delete rest
-        const toDelete = dup.ids.slice(1);
-        
-        for (const id of toDelete) {
-          try {
-            // Delete related records first
-            await supabase.from('post_video_sources').delete().eq('post_id', id);
-            await supabase.from('post_actors').delete().eq('post_id', id);
-            await supabase.from('post_categories').delete().eq('post_id', id);
-            
-            const { error: delError } = await supabase
-              .from('posts')
-              .delete()
-              .eq('id', id);
-            
-            if (delError) {
-              logger.error(`Error deleting duplicate post ${id}:`, delError);
-              errorCount++;
-            } else {
-              deletedCount++;
-            }
-          } catch (err) {
-            logger.error(`Exception deleting duplicate post ${id}:`, err);
-            errorCount++;
-          }
-        }
-      }
-      
-      // Invalidate all caches
-      cacheService.invalidateAllPostLists();
-      
-      logger.info(`Deduplication complete: ${deletedCount} deleted, ${errorCount} errors`);
-      
-      return reply.send({
-        success: true,
-        message: `Removed ${deletedCount} duplicate posts`,
-        data: {
-          duplicateGroups: duplicates.length,
-          deleted: deletedCount,
-          errors: errorCount,
-          details: duplicates
-        }
-      });
-    } catch (error) {
-      logger.error('Error in deduplication:', error);
-      return reply.status(500).send({
-        success: false,
-        message: 'Failed to deduplicate posts'
       });
     }
   });

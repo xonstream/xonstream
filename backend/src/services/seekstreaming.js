@@ -108,6 +108,31 @@ class SeekStreamingService {
     }
   }
 
+  async getVideosForPages(startPage = 1, endPage = 20) {
+    const allVideos = [];
+    try {
+      const requests = [];
+      for (let i = startPage; i <= endPage; i++) {
+        requests.push(this.getVideoList(i, 50));
+      }
+
+      if (requests.length > 0) {
+        const results = await Promise.all(requests);
+        results.forEach(result => {
+          if (result && result.data && Array.isArray(result.data)) {
+            allVideos.push(...result.data);
+          }
+        });
+      }
+
+      logger.info(`Fetched ${allVideos.length} videos from SeekStreaming for pages ${startPage} to ${endPage}`);
+      return allVideos;
+    } catch (error) {
+      logger.error(`Failed to fetch videos from SeekStreaming for pages ${startPage}-${endPage}`, error);
+      throw error;
+    }
+  }
+
   async getVideoDetail(videoId) {
     return await this.makeRequest(`/api/v1/video/manage/${videoId}`);
   }

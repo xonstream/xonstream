@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signOut, getSettings, saveSettings } from '@/lib/store';
-import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, adminLogout, flushCache } from '@/lib/api';
+import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, adminLogout, fetchSupportRequests, deleteSupportRequest } from '@/lib/api';
+import type { SupportRequest } from '@/lib/api';
 import Loader from '@/components/Loader';
 
 import type { Channel, Actor, Category, Post, VideoSourceInput } from '@/lib/types';
-import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles, Copy } from 'lucide-react';
+import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 
-type AdminTab = 'dashboard' | 'posts' | 'channels' | 'actors' | 'categories' | 'settings' | 'player-settings';
+type AdminTab = 'dashboard' | 'posts' | 'channels' | 'actors' | 'categories' | 'settings' | 'player-settings' | 'support';
 
 // Cloud/Rocket Loading Animation Component
 function RocketLoader({ text = 'Loading' }: { text?: string }) {
@@ -178,6 +179,21 @@ function loadData<T>(key: string, fallback: T[]): T[] {
 }
 function saveData<T>(key: string, data: T[]) {
   localStorage.setItem(key, JSON.stringify(data));
+}
+
+function parseDescription(desc: string) {
+  if (!desc) return { type: 'general', cleanDesc: '' };
+  const match = desc.match(/^\[Type:\s*([^\]]+)\]\s*(.*)$/i);
+  if (match) {
+    return {
+      type: match[1].toLowerCase(),
+      cleanDesc: match[2]
+    };
+  }
+  return {
+    type: 'general',
+    cleanDesc: desc
+  };
 }
 
 // ── Search+Select dropdown ──
@@ -398,7 +414,7 @@ export default function AdminPage() {
   const getInitialTab = (): AdminTab => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab') as AdminTab;
-    if (tabParam && ['dashboard', 'posts', 'channels', 'actors', 'categories', 'player-settings', 'settings'].includes(tabParam)) {
+    if (tabParam && ['dashboard', 'posts', 'channels', 'actors', 'categories', 'player-settings', 'settings', 'support'].includes(tabParam)) {
       return tabParam;
     }
     return 'dashboard';
@@ -413,12 +429,13 @@ export default function AdminPage() {
     actors: false,
     categories: false,
     settings: false,
-    'player-settings': false
+    'player-settings': false,
+    support: false
   });
 
   const [cats, setCats] = useState<Category[]>([]);
   const [settings, setSettings] = useState(() => getSettings());
-  const [playerSettings, setPlayerSettings] = useState<{ autoPlay: boolean; updatedAt: string }>({ autoPlay: true, updatedAt: '' });
+  const [playerSettings, setPlayerSettings] = useState<{ autoPlay: boolean; defaultServer: 'SERVER_01' | 'SERVER_02'; updatedAt: string }>({ autoPlay: true, defaultServer: 'SERVER_01', updatedAt: '' });
   const [modal, setModal] = useState<{ type: 'post' | 'channel' | 'actor' | 'category' | 'bulk'; mode: 'add' | 'edit'; data?: Post | Channel | Actor | Category } | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [formActors, setFormActors] = useState<string[]>([]);
@@ -433,7 +450,7 @@ export default function AdminPage() {
   const [buttonLoading, setButtonLoading] = useState<Record<string, boolean>>({});
   const [buttonDone, setButtonDone] = useState<Record<string, boolean>>({});
 
-  // Real data from backend/Supabase
+  // Real data from backend/GitHub
   const [backendPosts, setBackendPosts] = useState<Post[]>([]);
   const [chs, setChs] = useState<Channel[]>([]);
   const [acts, setActs] = useState<Actor[]>([]);
@@ -444,6 +461,12 @@ export default function AdminPage() {
 
   // Post search
   const [postSearch, setPostSearch] = useState('');
+  const [postSortOrder, setPostSortOrder] = useState<'newest' | 'oldest'>('newest');
+
+  // Support messages search & state
+  const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
+  const [supportSearch, setSupportSearch] = useState('');
+  const [supportTypeFilter, setSupportTypeFilter] = useState<'all' | 'general' | 'bug' | 'request'>('all');
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -456,16 +479,13 @@ export default function AdminPage() {
   const [channelSearch, setChannelSearch] = useState('');
   const [actorSearch, setActorSearch] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
+  const [syncStartPage, setSyncStartPage] = useState(1);
+  const [syncEndPage, setSyncEndPage] = useState(20);
 
   const fetchBackendPosts = async () => {
     setLoadingBackend(true);
     try {
-      console.log('[ADMIN] Fetching posts from backend...');
       const j = await fetchAdminPosts();
-      
-      console.log('[ADMIN] Response received:', j);
-      console.log('[ADMIN] success:', j.success);
-      console.log('[ADMIN] data:', j.data);
       
       if (j.success && j.data) {
         // DIAGNOSTIC: Log EXACT data received from API
@@ -489,13 +509,12 @@ export default function AdminPage() {
         setBackendPosts(cleaned);
         toast.success(`Loaded ${cleaned.length} posts`);
       } else {
-        console.error('[ADMIN] Failed to load posts - Response:', j);
-        toast.error(`Failed to load posts: ${(j as any).message || 'No data returned'}`);
+        toast.error('Failed to load posts: No data returned');
         setBackendPosts([]);
       }
     } catch (err) {
-      console.error('[ADMIN] Failed to fetch posts:', err);
-      toast.error(`Failed to load posts from backend: ${err.message || 'Unknown error'}`);
+      console.error('Failed to fetch posts:', err);
+      toast.error('Failed to load posts from backend');
       setBackendPosts([]);
     } finally {
       setLoadingBackend(false);
@@ -549,7 +568,7 @@ export default function AdminPage() {
 
   const handleSavePlayerSettings = async () => {
     try {
-      await updatePlayerSettings(playerSettings.autoPlay);
+      await updatePlayerSettings(playerSettings.autoPlay, playerSettings.defaultServer);
       toast.success('Player settings updated successfully!');
     } catch (err: any) {
       console.error('Failed to update player settings:', err);
@@ -605,6 +624,9 @@ export default function AdminPage() {
             const r = await fetchCategories();
             if (r.success) setCats(r.data);
           }
+        } else if (tab === 'support') {
+          const r = await fetchSupportRequests();
+          if (r.success) setSupportRequests(r.data);
         }
       } catch (error) {
         console.error(`Error loading data for tab ${tab}:`, error);
@@ -642,6 +664,7 @@ export default function AdminPage() {
     { id: 'categories', icon: Tag, label: 'Categories' },
     { id: 'player-settings', icon: Settings, label: 'Player Settings' },
     { id: 'settings', icon: Settings, label: 'Settings' },
+    { id: 'support', icon: MessageSquare, label: 'Support Messages' },
   ];
 
   const stats = [
@@ -686,6 +709,7 @@ export default function AdminPage() {
         description: postData.description || '',
         channelName: postData.channelName || '',
         vid_seekstreaming: seekSrc?.videoId || '',
+        vid_streamtape: postData.videoSources?.find((s: any) => s.platform === 'streamtape')?.videoId || '',
       });
       setFormActors(postData.actors || []);
       setFormCategories(postData.categories || []);
@@ -696,12 +720,16 @@ export default function AdminPage() {
   };
 
   const handleSavePost = async () => {
-    // Build videoSources - SeekStreaming only
+    // Build videoSources - Seekstreaming AND Streamtape
     const seekId = (form.vid_seekstreaming || '').trim();
+    const streamtapeId = (form.vid_streamtape || '').trim();
     const updatedSources: VideoSourceInput[] = [];
     
     if (seekId) {
       updatedSources.push({ platform: 'seekstreaming', videoId: seekId });
+    }
+    if (streamtapeId) {
+      updatedSources.push({ platform: 'streamtape', videoId: streamtapeId });
     }
 
     // Clean title - remove file extensions
@@ -734,14 +762,10 @@ export default function AdminPage() {
     
     setIsSaving(true);
     try {
-      const token = localStorage.getItem('admin_token');
       const resp = await fetch(`${API_BASE}/api/admin/posts${isEdit ? `/${postId}` : ''}`, {
         method: isEdit ? 'PUT' : 'POST',
         credentials: 'include',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       
@@ -771,16 +795,11 @@ export default function AdminPage() {
   };
 
   const handleDeletePost = async (id: string) => {
-    if (!window.confirm('Delete this post from Supabase?')) return;
+    if (!window.confirm('Delete this post from GitHub?')) return;
     try {
-      const token = localStorage.getItem('admin_token');
-      const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { 
-        method: 'DELETE', 
-        credentials: 'include',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
+      const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { method: 'DELETE', credentials: 'include' });
       const json = await resp.json();
-      if (json.success) { toast.success('Post deleted from Supabase ✓'); fetchBackendPosts(); }
+      if (json.success) { toast.success('Post deleted from GitHub ✓'); fetchBackendPosts(); }
       else toast.error(json.error || 'Delete failed');
     } catch { toast.error('Could not reach backend'); }
   };
@@ -807,17 +826,13 @@ export default function AdminPage() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected posts from Supabase?`)) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected posts from GitHub?`)) return;
     try {
-      const token = localStorage.getItem('admin_token');
       const idsArray = Array.from(selectedIds);
       const resp = await fetch(`${API_BASE}/api/admin/posts`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: idsArray }),
       });
       const json = await resp.json();
@@ -882,14 +897,10 @@ export default function AdminPage() {
         bulkPayload.addActors = bulkActors;
       }
       
-      const token = localStorage.getItem('admin_token');
       const resp = await fetch(`${API_BASE}/api/admin/posts/bulk-edit`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bulkPayload),
       });
       
@@ -919,17 +930,15 @@ export default function AdminPage() {
 
   const handleCleanAllTitles = async () => {
 
-    if (!window.confirm(`This will permanently remove .mp4, .mkv, .avi, .mov, .wmv from ALL post titles in Supabase. Continue?`)) return;
+    if (!window.confirm(`This will permanently remove .mp4, .mkv, .avi, .mov, .wmv from ALL post titles in GitHub. Continue?`)) return;
     
     setLoadingBackend(true);
     
     try {
-      const token = localStorage.getItem('admin_token');
       // Call backend endpoint to clean titles
       const response = await fetch(`${API_BASE}/api/admin/posts/clean-titles`, {
         method: 'POST',
         credentials: 'include',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
       
       const result = await response.json();
@@ -938,7 +947,7 @@ export default function AdminPage() {
         toast.success(result.message, {
           description: `${result.updated} updated, ${result.skipped} already clean`,
         });
-        fetchBackendPosts(); // Refresh display with clean data from Supabase
+        fetchBackendPosts(); // Refresh display with clean data from GitHub
       } else {
         toast.error(result.error || 'Title cleaning failed');
       }
@@ -946,38 +955,6 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error cleaning titles:', error);
       toast.error('Failed to clean titles');
-    } finally {
-      setLoadingBackend(false);
-    }
-  };
-
-  const handleDeduplicate = async () => {
-    if (!window.confirm('This will remove duplicate posts with the same title. Keep one copy of each. Continue?')) return;
-    
-    setLoadingBackend(true);
-    
-    try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch(`${API_BASE}/api/admin/posts/deduplicate`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        toast.success(result.message, {
-          description: `${result.data.duplicateGroups} groups found, ${result.data.deleted} duplicates removed`,
-        });
-        fetchBackendPosts(); // Refresh display
-      } else {
-        toast.error(result.error || 'Deduplication failed');
-      }
-      
-    } catch (error) {
-      console.error('Error deduplicating:', error);
-      toast.error('Failed to deduplicate posts');
     } finally {
       setLoadingBackend(false);
     }
@@ -991,7 +968,7 @@ export default function AdminPage() {
     try {
       const r = await saveChannel(ch);
       if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Channel updated in Supabase ✓' : 'Channel added to Supabase ✓');
+        toast.success(modal?.mode === 'edit' ? 'Channel updated in GitHub ✓' : 'Channel added to GitHub ✓');
         fetchChannels().then(res => { if (res.success) setChs(res.data); }).catch(() => {});
         setModal(null);
       } else toast.error('Save failed');
@@ -999,7 +976,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteChannel = async (id: string) => {
-    if (!window.confirm('Delete this channel from Supabase?')) return;
+    if (!window.confirm('Delete this channel from GitHub?')) return;
     try {
       const r = await deleteChannel(id);
       if (r.success) {
@@ -1025,7 +1002,7 @@ export default function AdminPage() {
     try {
       const r = await saveActor(actor);
       if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Actor updated in Supabase ✓' : 'Actor added to Supabase ✓');
+        toast.success(modal?.mode === 'edit' ? 'Actor updated in GitHub ✓' : 'Actor added to GitHub ✓');
         // Refresh local admin state
         fetchActors().then(res => { if (res.success) setActs(res.data); }).catch(() => {});
         // Invalidate React Query cache so ActorsPage/ActorPage/SearchPage immediately show updated crop
@@ -1036,7 +1013,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteActor = async (id: string) => {
-    if (!window.confirm('Delete this actor from Supabase?')) return;
+    if (!window.confirm('Delete this actor from GitHub?')) return;
     try {
       const r = await deleteActor(id);
       if (r.success) {
@@ -1078,6 +1055,22 @@ export default function AdminPage() {
     } catch (err: any) {
       console.error('Failed to delete category:', err);
       toast.error(err.message || 'Failed to delete category');
+    }
+  };
+
+  const handleDeleteSupport = async (key: string) => {
+    if (!window.confirm('Are you sure you want to delete this support message?')) return;
+    try {
+      const res = await deleteSupportRequest(key);
+      if (res.success) {
+        toast.success('Support message deleted successfully ✓');
+        setSupportRequests(prev => prev.filter(req => req.key !== key));
+      } else {
+        toast.error(res.message || 'Failed to delete message.');
+      }
+    } catch (err: any) {
+      console.error('Delete message error:', err);
+      toast.error(err.message || 'Failed to delete message.');
     }
   };
 
@@ -1169,12 +1162,12 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
-            <div className="flex gap-3 mb-6 flex-wrap">
+            <div className="flex gap-3 mb-6 flex-wrap items-center">
               <button onClick={async () => {
                 setButtonLoading(prev => ({ ...prev, sync: true }));
                 setButtonDone(prev => ({ ...prev, sync: false }));
                 try {
-                  const result = await syncPosts();
+                  const result = await syncPosts(syncStartPage, syncEndPage);
                   if (result.success) {
                     const addedCount = result.data?.added || 0;
                     toast.success(addedCount > 0 ? `${addedCount} new post(s) synced ✓` : 'Everything is already synced ✓');
@@ -1195,18 +1188,38 @@ export default function AdminPage() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[140px] justify-center">
                 {buttonLoading.sync ? <Loader size="small" /> : <><RefreshCw className="w-4 h-4" /> Sync Posts</>}
               </button>
+              <div className="flex items-center gap-2 bg-secondary/30 px-3 py-2 rounded-[20px] border border-border">
+                <span className="text-xs text-muted-foreground font-medium">Seek Pages:</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={syncStartPage}
+                  onChange={e => setSyncStartPage(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-12 text-center bg-card border border-border rounded-md text-xs py-1 text-foreground outline-none focus:ring-1 focus:ring-accent"
+                />
+                <span className="text-xs text-muted-foreground">to</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={syncEndPage}
+                  onChange={e => setSyncEndPage(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-12 text-center bg-card border border-border rounded-md text-xs py-1 text-foreground outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
               <button onClick={async () => {
-                if (!window.confirm('Are you sure you want to flush all cache? This will fetch fresh thumbnails from SeekStreaming and refresh all data from the database.')) return;
+                if (!window.confirm('Are you sure you want to flush all cache? This will refresh all data from the database.')) return;
                 setButtonLoading(prev => ({ ...prev, flush: true }));
                 try {
-                  const result = await flushCache();
-                  if (result.success) {
-                    const updated = result.data?.thumbnailsUpdated || 0;
-                    const errors = result.data?.thumbnailErrors || 0;
-                    toast.success(`Cache flushed! ${updated} thumbnails updated${errors > 0 ? `, ${errors} errors` : ''} ✓`);
+                  const resp = await fetch(`${API_BASE}/api/admin/cache/flush`, {
+                    method: 'POST',
+                    credentials: 'include',
+                  });
+                  const json = await resp.json();
+                  if (json.success) {
+                    toast.success('Cache flushed successfully! ✓');
                     refreshAll();
                   } else {
-                    toast.error(result.message || 'Failed to flush cache');
+                    toast.error(json.message || 'Failed to flush cache');
                   }
                 } catch (error) {
                   console.error('Cache flush error:', error);
@@ -1227,15 +1240,6 @@ export default function AdminPage() {
                 disabled={buttonLoading.clean}
                 className="flex items-center gap-2 px-5 py-2.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-[20px] text-sm font-medium hover:bg-purple-500/30 transition-all shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 min-w-[140px] justify-center">
                 {buttonLoading.clean ? <Loader size="small" /> : <><Sparkles className="w-4 h-4" /> Format File Fix</>}
-              </button>
-              <button onClick={async () => {
-                setButtonLoading(prev => ({ ...prev, dedupe: true }));
-                await handleDeduplicate();
-                setButtonLoading(prev => ({ ...prev, dedupe: false }));
-              }}
-                disabled={buttonLoading.dedupe}
-                className="flex items-center gap-2 px-5 py-2.5 bg-orange-500/20 text-orange-300 border border-orange-500/30 rounded-[20px] text-sm font-medium hover:bg-orange-500/30 transition-all shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 min-w-[140px] justify-center">
-                {buttonLoading.dedupe ? <Loader size="small" /> : <><Copy className="w-4 h-4" /> Deduplicate</>}
               </button>
               <button onClick={async () => {
                 setButtonLoading(prev => ({ ...prev, deleteAll: true }));
@@ -1265,27 +1269,28 @@ export default function AdminPage() {
         {tab === 'posts' && !tabLoading.posts && (() => {
           const filteredPosts = postSearch.trim()
             ? backendPosts.filter(p =>
-                p.title?.toLowerCase().includes(postSearch.toLowerCase())
+                p.title?.toLowerCase().includes(postSearch.toLowerCase()) ||
+                p.channelName?.toLowerCase().includes(postSearch.toLowerCase())
               )
             : backendPosts;
+
+          // Sort posts
+          const sortedPosts = [...filteredPosts].sort((a, b) => {
+            const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
+            const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
+            return postSortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+          });
           
-          // Debug: Log search results
-          if (postSearch.trim()) {
-            console.log(`[SEARCH] Query: "${postSearch}" | Found: ${filteredPosts.length} of ${backendPosts.length} posts`);
-          }
-          
-          // When searching, show all results. When not searching, use pagination.
-          const isSearching = postSearch.trim() !== '';
-          const displayPosts = isSearching ? filteredPosts : filteredPosts.slice(
-            (currentPage - 1) * POSTS_PER_PAGE,
-            currentPage * POSTS_PER_PAGE
-          );
-          const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
+          // Pagination logic
+          const totalPages = Math.ceil(sortedPosts.length / POSTS_PER_PAGE);
+          const startIndex = (currentPage - 1) * POSTS_PER_PAGE;
+          const endIndex = startIndex + POSTS_PER_PAGE;
+          const paginatedPosts = sortedPosts.slice(startIndex, endIndex);
           
           return (
           <div>
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">Posts ({displayPosts.length}{postSearch ? ` of ${backendPosts.length}` : ''})</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-foreground">Posts ({paginatedPosts.length}{postSearch ? ` of ${backendPosts.length}` : ''})</h1>
               <div className="flex gap-2 flex-wrap">
                 {selectedIds.size > 0 && (
                   <>
@@ -1311,20 +1316,33 @@ export default function AdminPage() {
                 </button>
               </div>
             </div>
-            {/* Search box */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                value={postSearch}
-                onChange={e => setPostSearch(e.target.value)}
-                placeholder="Search posts by title or channel..."
-                className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
-              {postSearch && (
-                <button onClick={() => setPostSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+            {/* Search and Sort controls */}
+            <div className="flex gap-3 mb-4 flex-wrap sm:flex-nowrap">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  value={postSearch}
+                  onChange={e => setPostSearch(e.target.value)}
+                  placeholder="Search posts by title or channel..."
+                  className="w-full pl-10 pr-10 py-2.5 bg-card border border-border rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                {postSearch && (
+                  <button onClick={() => setPostSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 bg-card border border-border px-4 py-1 rounded-[24px] flex-shrink-0">
+                <span className="text-xs text-muted-foreground font-medium">Sort:</span>
+                <select
+                  value={postSortOrder}
+                  onChange={e => setPostSortOrder(e.target.value as 'newest' | 'oldest')}
+                  className="bg-transparent text-sm text-foreground outline-none cursor-pointer pr-4"
+                >
+                  <option value="newest" className="bg-card text-foreground">Newest First</option>
+                  <option value="oldest" className="bg-card text-foreground">Oldest First</option>
+                </select>
+              </div>
             </div>
             
             {/* Loading indicator */}
@@ -1340,8 +1358,8 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="p-3 w-8"><input type="checkbox" checked={selectedIds.size === displayPosts.length && displayPosts.length > 0}
-                      onChange={() => { if (selectedIds.size === displayPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(displayPosts.map(p => p.id))); }}
+                    <th className="p-3 w-8"><input type="checkbox" checked={selectedIds.size === backendPosts.length && backendPosts.length > 0}
+                      onChange={() => { if (selectedIds.size === backendPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(backendPosts.map(p => p.id))); }}
                       className="accent-accent w-4 h-4" /></th>
                     <th className="text-left p-3 text-muted-foreground font-medium">Thumbnail</th>
                     <th className="text-left p-3 text-muted-foreground font-medium">Title</th>
@@ -1352,7 +1370,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayPosts.map(p => (
+                  {paginatedPosts.map(p => (
                     <tr key={p.id} className={`border-b border-border hover:bg-secondary/30 transition-colors ${selectedIds.has(p.id) ? 'bg-accent/5' : ''}`}>
                       <td className="p-3"><input type="checkbox" checked={selectedIds.has(p.id)}
                         onChange={() => { const s = new Set(selectedIds); if (s.has(p.id)) s.delete(p.id); else s.add(p.id); setSelectedIds(s); }}
@@ -1387,7 +1405,7 @@ export default function AdminPage() {
               </table>
             </div>
             <div className="md:hidden space-y-3">
-              {displayPosts.map(p => (
+              {paginatedPosts.map(p => (
                 <div key={p.id} className={`bg-card rounded-[12px] border border-border p-3 flex items-center gap-3 ${selectedIds.has(p.id) ? 'ring-2 ring-accent/40' : ''}`}>
                   <input type="checkbox" checked={selectedIds.has(p.id)}
                     onChange={() => { const s = new Set(selectedIds); if (s.has(p.id)) s.delete(p.id); else s.add(p.id); setSelectedIds(s); }}
@@ -1411,8 +1429,8 @@ export default function AdminPage() {
               ))}
             </div>
             
-            {/* Pagination Controls - Only show when not searching */}
-            {!isSearching && totalPages > 1 && (
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 mt-6">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -1616,6 +1634,39 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* Default Server Setting */}
+              <div className="pt-4 border-t border-border">
+                <label className="text-sm font-medium text-foreground block mb-3">Default Video Server</label>
+                <p className="text-xs text-muted-foreground mb-4">Select which server users will see by default when opening videos.</p>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPlayerSettings({ ...playerSettings, defaultServer: 'SERVER_01' })}
+                    className={`flex-1 px-4 py-3 rounded-full text-sm font-medium transition-all ${
+                      playerSettings.defaultServer === 'SERVER_01'
+                        ? 'bg-accent text-white shadow-lg shadow-accent/30'
+                        : 'bg-secondary text-secondary-foreground hover:bg-tertiary'
+                    }`}
+                  >
+                    SERVER 01
+                    <span className="block text-xs font-normal opacity-80 mt-0.5">Seekstreaming</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlayerSettings({ ...playerSettings, defaultServer: 'SERVER_02' })}
+                    className={`flex-1 px-4 py-3 rounded-full text-sm font-medium transition-all ${
+                      playerSettings.defaultServer === 'SERVER_02'
+                        ? 'bg-accent text-white shadow-lg shadow-accent/30'
+                        : 'bg-secondary text-secondary-foreground hover:bg-tertiary'
+                    }`}
+                  >
+                    SERVER 02
+                    <span className="block text-xs font-normal opacity-80 mt-0.5">Streamtape</span>
+                  </button>
+                </div>
+              </div>
+
               {playerSettings.updatedAt && (
                 <p className="text-xs text-muted-foreground">
                   Last updated: {new Date(playerSettings.updatedAt).toLocaleString()}
@@ -1634,6 +1685,248 @@ export default function AdminPage() {
                 {buttonLoading.savePlayer ? <Loader size="small" /> : 'Save Changes'}
               </button>
             </div>
+          </div>
+        )}
+
+        {tab === 'support' && !tabLoading.support && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-foreground">Support Messages</h1>
+                <p className="text-xs text-muted-foreground">Read and manage bug reports, requests, and contact forms sent by users.</p>
+              </div>
+              <button
+                onClick={async () => {
+                  setTabLoading(prev => ({ ...prev, support: true }));
+                  try {
+                    const r = await fetchSupportRequests();
+                    if (r.success) {
+                      setSupportRequests(r.data);
+                      toast.success('Support messages refreshed.');
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || 'Failed to fetch messages');
+                  } finally {
+                    setTabLoading(prev => ({ ...prev, support: false }));
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-secondary border border-border text-foreground rounded-[20px] text-xs font-semibold hover:bg-secondary/80 transition-colors self-start sm:self-auto"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+            </div>
+
+            {/* Filter controls */}
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={supportSearch}
+                  onChange={e => setSupportSearch(e.target.value)}
+                  placeholder="Search by name, email, or message..."
+                  className="w-full pl-10 pr-4 py-2 bg-secondary/50 border border-border rounded-[24px] text-foreground text-sm outline-none transition-all focus:ring-2 focus:ring-accent focus:border-transparent"
+                />
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-1 md:pb-0">
+                {[
+                  { id: 'all', label: 'All Messages' },
+                  { id: 'general', label: 'Contact' },
+                  { id: 'bug', label: 'Bugs' },
+                  { id: 'request', label: 'Requests' }
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setSupportTypeFilter(f.id as any)}
+                    className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+                      supportTypeFilter === f.id
+                        ? 'bg-accent text-white'
+                        : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Support Messages List */}
+            {(() => {
+              // Parse messages and filter
+              const parsedRequests = supportRequests.map(req => {
+                const parsed = parseDescription(req.description);
+                return {
+                  ...req,
+                  type: parsed.type,
+                  cleanDescription: parsed.cleanDesc
+                };
+              });
+
+              const filtered = parsedRequests.filter(req => {
+                // Type filter
+                if (supportTypeFilter !== 'all' && req.type !== supportTypeFilter) {
+                  return false;
+                }
+                // Text search
+                if (supportSearch.trim()) {
+                  const q = supportSearch.toLowerCase();
+                  return (
+                    req.fullName.toLowerCase().includes(q) ||
+                    req.email.toLowerCase().includes(q) ||
+                    req.cleanDescription.toLowerCase().includes(q)
+                  );
+                }
+                return true;
+              });
+
+              // Sort by date (newest first)
+              const sorted = [...filtered].sort((a, b) => {
+                const timeA = new Date(a.createdAt).getTime();
+                const timeB = new Date(b.createdAt).getTime();
+                return timeB - timeA;
+              });
+
+              if (sorted.length === 0) {
+                return (
+                  <div className="bg-card/40 border border-border rounded-2xl p-12 text-center max-w-lg mx-auto mt-6">
+                    <MessageSquare className="w-12 h-12 text-muted-foreground/45 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-foreground mb-1">No Messages</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {supportSearch.trim() || supportTypeFilter !== 'all'
+                        ? 'No messages match your search filters.'
+                        : 'Everything is quiet! There are currently no support requests from users.'}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4">
+                  {/* Desktop view (Hidden on mobile) */}
+                  <div className="hidden lg:block overflow-hidden bg-card/20 border border-border rounded-xl">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-border bg-card/60 text-xs font-bold text-muted-foreground uppercase">
+                          <th className="px-6 py-4 w-48">Date</th>
+                          <th className="px-6 py-4 w-56">User</th>
+                          <th className="px-6 py-4 w-28">Type</th>
+                          <th className="px-6 py-4">Message</th>
+                          <th className="px-6 py-4 w-24 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60 text-sm">
+                        {sorted.map(req => {
+                          const dateStr = new Date(req.createdAt).toLocaleString(undefined, {
+                            dateStyle: 'medium',
+                            timeStyle: 'short'
+                          });
+
+                          let badgeColor = 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+                          let typeLabel = 'Contact';
+                          if (req.type === 'bug') {
+                            badgeColor = 'bg-destructive/10 text-destructive border-destructive/20';
+                            typeLabel = 'Bug';
+                          } else if (req.type === 'request') {
+                            badgeColor = 'bg-accent/10 text-accent border-accent/20';
+                            typeLabel = 'Request';
+                          }
+
+                          return (
+                            <tr key={req.key} className="hover:bg-secondary/20 transition-colors">
+                              <td className="px-6 py-4 text-xs text-muted-foreground align-top whitespace-nowrap">
+                                {dateStr}
+                              </td>
+                              <td className="px-6 py-4 align-top">
+                                <div className="font-semibold text-foreground">{req.fullName}</div>
+                                <a
+                                  href={`mailto:${req.email}`}
+                                  className="text-xs text-accent hover:underline break-all block mt-0.5"
+                                >
+                                  {req.email}
+                                </a>
+                              </td>
+                              <td className="px-6 py-4 align-top">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${badgeColor}`}>
+                                  {typeLabel}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 align-top">
+                                <div className="text-foreground leading-relaxed whitespace-pre-wrap max-w-2xl break-words">
+                                  {req.cleanDescription}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-center align-top">
+                                <button
+                                  onClick={() => handleDeleteSupport(req.key)}
+                                  className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-all inline-flex items-center justify-center"
+                                  title="Delete Message"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile & Tablet Card View (Hidden on large screens) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden">
+                    {sorted.map(req => {
+                      const dateStr = new Date(req.createdAt).toLocaleString(undefined, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short'
+                      });
+
+                      let badgeColor = 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+                      let typeLabel = 'Contact';
+                      if (req.type === 'bug') {
+                        badgeColor = 'bg-destructive/10 text-destructive border-destructive/20';
+                        typeLabel = 'Bug';
+                      } else if (req.type === 'request') {
+                        badgeColor = 'bg-accent/10 text-accent border-accent/20';
+                        typeLabel = 'Request';
+                      }
+
+                      return (
+                        <div
+                          key={req.key}
+                          className="bg-card border border-border rounded-xl p-5 hover:border-border/80 transition-all flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeColor}`}>
+                                {typeLabel}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">{dateStr}</span>
+                            </div>
+                            <h4 className="font-bold text-foreground leading-tight">{req.fullName}</h4>
+                            <a
+                              href={`mailto:${req.email}`}
+                              className="text-xs text-accent hover:underline inline-block mb-3.5"
+                            >
+                              {req.email}
+                            </a>
+                            <div className="text-xs text-foreground/90 whitespace-pre-wrap leading-relaxed border-t border-border/30 pt-3 break-words">
+                              {req.cleanDescription}
+                            </div>
+                          </div>
+                          <div className="flex justify-end border-t border-border/30 pt-3 mt-4">
+                            <button
+                              onClick={() => handleDeleteSupport(req.key)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-xs font-bold hover:bg-destructive/20 transition-all"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Dismiss Message
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -1669,17 +1962,38 @@ export default function AdminPage() {
         <ActorMultiSelect selected={formActors} onChange={setFormActors} options={acts.map(a => a.name)} />
         <CategoryMultiSelect selected={formCategories} onChange={setFormCategories} options={cats.filter(c => c.id !== 'all').map(c => c.name)} />
 
-        {/* ── Video Source ID (SeekStreaming Only) ── */}
+        {/* ── Video Source IDs (Seekstreaming + Streamtape) ── */}
         <div className="mb-3 mt-1">
-          <label className="text-sm font-medium text-foreground block mb-1">SeekStreaming Video ID</label>
-          <p className="text-xs text-muted-foreground mb-2">Enter the SeekStreaming video ID for this post.</p>
+          <label className="text-sm font-medium text-foreground block mb-1">Video Sources</label>
+          <p className="text-xs text-muted-foreground mb-2">Add video IDs for each server. Fill in both for server switching.</p>
           
-          <input
-            value={form.vid_seekstreaming || ''}
-            onChange={e => setForm({ ...form, vid_seekstreaming: e.target.value })}
-            placeholder="SeekStreaming video ID"
-            className="w-full px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
-          />
+          {/* SERVER 01 - Seekstreaming */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className="text-xs font-semibold text-purple-400 w-[100px] flex-shrink-0">
+              <span className="block">SERVER 01</span>
+              <span className="block text-[10px] opacity-70">Seekstreaming</span>
+            </div>
+            <input
+              value={form.vid_seekstreaming || ''}
+              onChange={e => setForm({ ...form, vid_seekstreaming: e.target.value })}
+              placeholder="Seekstreaming video ID"
+              className="flex-1 px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
+            />
+          </div>
+          
+          {/* SERVER 02 - Streamtape */}
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-semibold text-blue-400 w-[100px] flex-shrink-0">
+              <span className="block">SERVER 02</span>
+              <span className="block text-[10px] opacity-70">Streamtape</span>
+            </div>
+            <input
+              value={form.vid_streamtape || ''}
+              onChange={e => setForm({ ...form, vid_streamtape: e.target.value })}
+              placeholder="Streamtape video ID"
+              className="flex-1 px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
+            />
+          </div>
         </div>
 
         <button onClick={handleSavePost} disabled={isSaving} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 min-h-[40px]">

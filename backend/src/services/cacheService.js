@@ -144,12 +144,14 @@ class CacheService {
     // Delete ALL channel posts caches (channel_posts:ID)
     // Delete ALL actor posts caches (actor_posts:ID)
     // Delete latest_posts cache
+    // Delete search caches
     const keys = this.cache.keys();
     const postListKeys = keys.filter(key => 
       key.startsWith('posts:page:') || 
       key.startsWith('post:') || 
       key.startsWith('channel_posts:') || 
       key.startsWith('actor_posts:') ||
+      key.startsWith('search:') ||
       key === 'latest_posts'
     );
     postListKeys.forEach(key => this.del(key));

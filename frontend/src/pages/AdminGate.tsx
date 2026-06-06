@@ -26,17 +26,9 @@ export default function AdminGate() {
       // Call backend login API
       const result = await adminLogin('admin', passphrase);
       
-      console.log('[ADMIN GATE] Login result:', result);
-      
       if (result.success) {
         // Store admin session in localStorage
         setAdminSession();
-        
-        // Store token for API authentication
-        if (result.token) {
-          localStorage.setItem('admin_token', result.token);
-          console.log('[ADMIN GATE] Token stored in localStorage');
-        }
         
         // Verify it was actually stored
         const storedUser = getCurrentUser();
@@ -53,12 +45,11 @@ export default function AdminGate() {
           setError('Failed to initialize admin session');
         }
       } else {
-        console.error('[ADMIN GATE] Login failed:', result);
-        setError(result.message || 'Wrong password. Access denied.');
+        setError('Wrong password. Access denied.');
         setPassphrase('');
       }
     } catch (err) {
-      console.error('[ADMIN GATE] Login error:', err);
+      console.error('Login error:', err);
       setError('Login failed. Please try again.');
     }
     

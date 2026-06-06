@@ -3,33 +3,7 @@ const cacheService = require('../services/cacheService');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
-// Filter out unwanted category names
-const BLOCKED_CATEGORY_PATTERNS = [
-  'example', 'yeh', 'mp4', 'free full video', 'full video', 'free video',
-  '⭐️', '⭐', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp'
-];
-
-function isBlockedCategory(name) {
-  if (!name) return true;
-  const lower = name.toLowerCase();
-  return BLOCKED_CATEGORY_PATTERNS.some(pattern => lower.includes(pattern));
-}
-
-function filterCategories(categories) {
-  return (categories || []).filter(c => !isBlockedCategory(c));
-}
-
-// Helper function to build full thumbnail URL from path
-function buildThumbnailUrl(thumbnailPath) {
-  if (!thumbnailPath) return '';
-  if (thumbnailPath.startsWith('http://') || thumbnailPath.startsWith('https://')) {
-    return thumbnailPath;
-  }
-  const playerDomain = env.SEEKSTREAMING_PLAYER_DOMAIN || 'seekstreaming.com';
-  const domain = playerDomain.startsWith('http') ? playerDomain : `https://${playerDomain}`;
-  const path = thumbnailPath.startsWith('/') ? thumbnailPath : `/${thumbnailPath}`;
-  return `${domain}${path}`;
-}
+const { getPostThumbnail, getPostPreview } = require('../utils/postHelpers');
 
 module.exports = async (fastify, opts) => {
   fastify.get('/api/search', async (request, reply) => {
@@ -110,6 +84,25 @@ module.exports = async (fastify, opts) => {
             }
           }
         }
+
+        // Find channel ID by name if provided
+        let channelId = null;
+        if (channel && !shouldReturnEmpty) {
+          const { data: channelData, error: channelLookupError } = await supabase
+            .from('channels')
+            .select('id')
+            .ilike('name', channel)
+            .single();
+          
+          if (channelLookupError || !channelData) {
+            logger.warn(`Channel not found: ${channel}`);
+            searchResults = [];
+            total = 0;
+            shouldReturnEmpty = true;
+          } else {
+            channelId = channelData.id;
+          }
+        }
         
         // Skip query if we already know there are no results
         if (shouldReturnEmpty) {
@@ -134,25 +127,26 @@ module.exports = async (fastify, opts) => {
           logger.info(`Search words:`, words);
           
           if (words.length > 0) {
-            // Build search conditions - use simple ilike on title and description
-            // Supabase .or() syntax: 'column1.ilike.%value1%,column2.ilike.%value2%'
-            const conditions = [];
-            words.forEach(word => {
-              const escapedWord = word.replace(/[%_]/g, '\\$&');
-              conditions.push(`title.ilike.%${escapedWord}%`);
-              conditions.push(`description.ilike.%${escapedWord}%`);
+            // Build nested AND/OR condition to match all words in any order
+            const wordConditions = words.map(word => {
+              const escapedWord = word
+                .replace(/\\/g, '\\\\')
+                .replace(/"/g, '\\"')
+                .replace(/%/g, '\\%')
+                .replace(/_/g, '\\_');
+              return `or(title.ilike."%${escapedWord}%",description.ilike."%${escapedWord}%")`;
             });
             
-            // Join all conditions with OR
-            queryBuilder = queryBuilder.or(conditions.join(','));
+            const condition = `and(${wordConditions.join(',')})`;
+            queryBuilder = queryBuilder.or(condition);
             
-            logger.info(`Search OR condition:`, conditions.join(','));
+            logger.info(`Search AND condition:`, condition);
           }
         }
 
-        // Add channel filter
-        if (channel) {
-          queryBuilder = queryBuilder.eq('channel.name', channel);
+        // Apply channel filter
+        if (channelId) {
+          queryBuilder = queryBuilder.eq('channel_id', channelId);
         }
 
         // Add actor filter - need to look up actor ID first
@@ -259,22 +253,27 @@ module.exports = async (fastify, opts) => {
         }
       }
 
-      const formattedResults = searchResults.map(post => {
+      const formattedResults = await Promise.all(searchResults.map(async post => {
         // Map video sources from the joined table
         const videoSources = (post.post_video_sources || []).map(vs => ({
           platform: vs.platform,
           videoId: vs.video_id
         }));
         
-        // Get categories from map and filter out unwanted ones
-        const rawCategories = categoriesMap[post.id] || [];
-        const categories = filterCategories(rawCategories);
+        // Get categories from map
+        const categories = categoriesMap[post.id] || [];
+
+        const [thumbnail, previewUrl] = await Promise.all([
+          getPostThumbnail(post),
+          getPostPreview(post)
+        ]);
         
         const formatted = {
           id: post.id,
           title: post.title,
           description: post.description || '',
-          thumbnail: buildThumbnailUrl(post.thumbnail),
+          thumbnail: thumbnail,
+          previewUrl: previewUrl,
           channelName: post.channel?.name || '',
           categories: categories,
           category: categories[0] || '', // First category for backward compatibility
@@ -290,7 +289,7 @@ module.exports = async (fastify, opts) => {
         }
         
         return formatted;
-      });
+      }));
       
       logger.info(`Search completed: ${formattedResults.length} results, ${total} total`);
       logger.info(`Pagination: page=${page}, perPage=${perPage}, total=${total}, totalPages=${Math.ceil(total / perPage)}`);

@@ -5,14 +5,7 @@ import { fetchChannels } from '@/lib/api';
 import type { Post } from '@/lib/types';
 import { generateVideoUrl, formatDate } from '@/lib/utils';
 
-// Format title to capitalize E in episode codes (S01E01 -> S01E01 with big E)
-const formatTitle = (title: string): string => {
-  if (!title) return '';
-  // Match patterns like S01e01, s01E01, S01E01 and ensure E is capitalized
-  return title.replace(/([Ss]\d+)([eE])(\d+)/g, (match, season, e, episode) => {
-    return season + 'E' + episode;
-  });
-};
+
 
 type PostBoxProps = {
   post: Post;
@@ -126,7 +119,7 @@ const PostBox = memo(function PostBox({ post, layout = 'grid' }: PostBoxProps) {
               {/* Static thumbnail */}
               <img 
                 src={thumbnailUrl} 
-                alt={formatTitle(post.title)} 
+                alt={post.title} 
                 className={`w-full h-full object-cover transition-opacity duration-200 ${
                   isHovered && previewUrl ? 'opacity-0' : 'opacity-100'
                 }`} 
@@ -153,7 +146,7 @@ const PostBox = memo(function PostBox({ post, layout = 'grid' }: PostBoxProps) {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground line-clamp-2 hover:text-accent transition-colors">{formatTitle(post.title)}</h3>
+          <h3 className="text-sm font-semibold text-foreground line-clamp-2 hover:text-accent transition-colors">{post.title}</h3>
           {post.channelName && <p className="text-xs text-muted-foreground mt-1">{post.channelName}</p>}
           <p className="text-xs text-muted-foreground">{formatDate(post.createdAt)}</p>
         </div>
@@ -182,7 +175,7 @@ const PostBox = memo(function PostBox({ post, layout = 'grid' }: PostBoxProps) {
             {/* Static thumbnail - always visible */}
             <img 
               src={thumbnailUrl} 
-              alt={formatTitle(post.title)} 
+              alt={post.title} 
               className={`w-full h-full object-cover transition-opacity duration-200 ${
                 isHovered && previewUrl ? 'opacity-0' : 'opacity-100'
               }`} 
@@ -218,7 +211,7 @@ const PostBox = memo(function PostBox({ post, layout = 'grid' }: PostBoxProps) {
           )}
         </div>
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-foreground line-clamp-2 leading-5">{formatTitle(post.title)}</h3>
+          <h3 className="text-sm font-semibold text-foreground line-clamp-2 leading-5">{post.title}</h3>
           {post.channelName && (
             <span onClick={goToChannel}
               className="text-xs text-muted-foreground mt-1 block hover:text-accent transition-colors cursor-pointer">

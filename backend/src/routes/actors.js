@@ -3,17 +3,7 @@ const cacheService = require('../services/cacheService');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
-// Helper function to build full thumbnail URL from path
-function buildThumbnailUrl(thumbnailPath) {
-  if (!thumbnailPath) return '';
-  if (thumbnailPath.startsWith('http://') || thumbnailPath.startsWith('https://')) {
-    return thumbnailPath;
-  }
-  const playerDomain = env.SEEKSTREAMING_PLAYER_DOMAIN || 'seekstreaming.com';
-  const domain = playerDomain.startsWith('http') ? playerDomain : `https://${playerDomain}`;
-  const path = thumbnailPath.startsWith('/') ? thumbnailPath : `/${thumbnailPath}`;
-  return `${domain}${path}`;
-}
+const { getPostThumbnail, getPostPreview } = require('../utils/postHelpers');
 
 module.exports = async (fastify, opts) => {
   fastify.get('/api/actors', async (request, reply) => {
@@ -155,7 +145,7 @@ module.exports = async (fastify, opts) => {
         }
       }
 
-      const formattedPosts = posts.map(post => {
+      const formattedPosts = await Promise.all(posts.map(async post => {
         // Map video sources from the joined table
         const videoSources = (post.post_video_sources || []).map(vs => ({
           platform: vs.platform,
@@ -164,12 +154,18 @@ module.exports = async (fastify, opts) => {
         
         // Get categories from map
         const categories = categoriesMap[post.id] || [];
+
+        const [thumbnail, previewUrl] = await Promise.all([
+          getPostThumbnail(post),
+          getPostPreview(post)
+        ]);
         
         return {
           id: post.id,
           title: post.title,
           description: post.description || '',
-          thumbnail: buildThumbnailUrl(post.thumbnail),
+          thumbnail: thumbnail,
+          previewUrl: previewUrl,
           channelName: post.channel?.name || '',
           categories: categories,
           category: categories[0] || '', // First category for backward compatibility
@@ -178,7 +174,7 @@ module.exports = async (fastify, opts) => {
           createdAt: post.created_at,
           actorCount: post.post_actors ? post.post_actors.length : 0
         };
-      });
+      }));
 
       const result = {
         posts: formattedPosts,

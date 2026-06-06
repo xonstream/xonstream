@@ -135,32 +135,20 @@ const allowedOrigins = [
   'http://localhost:8080',
   'http://localhost:3000',
   'http://localhost:7860',
-  'http://localhost:5173',  // Vite dev server
-  'https://xonstream.pages.dev',  // Cloudflare Pages production
-  /^https:\/\/.*\.pages\.dev$/,        // Cloudflare Pages preview URLs
-  /^https:\/\/.*\.pages\.cloudflare$/, // Cloudflare Pages custom domains
+  /^https:\/\/.*\.pages\.dev$/,
   /^https:\/\/.*\.qzz\.io$/,
-  /^https:\/\/.*\.hf\.space$/,         // Hugging Face Spaces
-  // Add CORS_ORIGIN from environment variable if set
-  ...(env.CORS_ORIGIN ? [env.CORS_ORIGIN] : []),
-  // Add your production Cloudflare Pages domain here:
-  // 'https://your-domain.com'
+  /^https:\/\/.*\.hf\.space$/
 ];
 
 const startServer = async () => {
   try {
     logger.info('Starting XonStream Backend...');
     logger.info('Environment loaded successfully');
-    
-    // Log CORS configuration for debugging
-    logger.info(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
-    logger.info(`CORS_ORIGIN from env: ${env.CORS_ORIGIN || 'not set'}`);
 
     logger.info('Supabase configuration loaded');
 
     await fastify.register(cors, {
       origin: (origin, cb) => {
-        // Allow requests with no origin (like mobile apps or curl)
         if (!origin) {
           return cb(null, true);
         }
@@ -176,14 +164,11 @@ const startServer = async () => {
           return cb(null, true);
         }
 
-        logger.warn(`CORS blocked origin: ${origin}`);
         cb(new Error('Not allowed by CORS'), false);
       },
       credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
-      exposedHeaders: ['Content-Range', 'X-Content-Range'],
-      maxAge: 600 // Cache preflight request for 10 minutes
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization']
     });
 
     await fastify.register(helmet, {
