@@ -51,17 +51,23 @@ const adminAuth = async (fastify) => {
         { expiresIn: '24h' }
       );
 
+      const isProduction = process.env.NODE_ENV === 'production';
       reply.setCookie('admin_session', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60 * 1000,
+        // In production the frontend and backend are on different domains (cross-origin).
+        // SameSite:'none' is required for the cookie to be sent with cross-origin requests.
+        // SameSite:'none' REQUIRES Secure:true — browsers reject it otherwise.
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        // maxAge is in seconds for Fastify cookies (not milliseconds)
+        maxAge: 24 * 60 * 60,
         path: '/'
       });
 
       return reply.send({
         success: true,
-        message: 'Login successful'
+        message: 'Login successful',
+        token: token
       });
     } catch (error) {
       return reply.status(500).send({

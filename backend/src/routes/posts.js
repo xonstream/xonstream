@@ -184,6 +184,35 @@ module.exports = async (fastify, opts) => {
       const { data: posts, error, count } = await queryBuilder
         .range(skip, skip + perPage - 1);
 
+      // Fallback: when count is null (can happen with complex multi-join queries in
+      // production/PostgREST), run a separate lightweight count-only query so that
+      // pagination totals are always accurate.
+      let resolvedCount = count;
+      if (resolvedCount === null || resolvedCount === undefined) {
+        try {
+          let countQuery = supabase
+            .from('posts')
+            .select('id', { count: 'exact', head: true });
+
+          if (postIds) {
+            countQuery = countQuery.in('id', postIds);
+          }
+
+          const { count: fallbackCount, error: countError } = await countQuery;
+
+          if (!countError && fallbackCount !== null) {
+            resolvedCount = fallbackCount;
+            logger.info(`Used fallback count query: ${resolvedCount} posts`);
+          } else {
+            logger.warn('Fallback count query also returned null, defaulting to 0');
+            resolvedCount = 0;
+          }
+        } catch (countErr) {
+          logger.warn('Fallback count query failed:', countErr.message);
+          resolvedCount = 0;
+        }
+      }
+
       if (error) {
         logger.error('Error fetching posts from Supabase', error);
         throw error;
@@ -233,7 +262,7 @@ module.exports = async (fastify, opts) => {
         };
       }));
 
-      const total = totalCount !== null ? totalCount : (count || 0);
+      const total = totalCount !== null ? totalCount : (resolvedCount || 0);
       const result = {
         success: true,
         data: postsWithCategories,

@@ -147,6 +147,12 @@ const startServer = async () => {
 
     logger.info('Supabase configuration loaded');
 
+    // Support optional custom domain from env (e.g. your production custom domain)
+    const customOrigin = process.env.CORS_ORIGIN;
+    if (customOrigin && !allowedOrigins.includes(customOrigin)) {
+      allowedOrigins.push(customOrigin);
+    }
+
     await fastify.register(cors, {
       origin: (origin, cb) => {
         if (!origin) {
@@ -168,7 +174,10 @@ const startServer = async () => {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      // 'Cookie' must be listed so browsers send the session cookie on cross-origin requests.
+      // 'Set-Cookie' must be exposed so the browser can store the cookie set by the login response.
+      allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+      exposedHeaders: ['Set-Cookie'],
     });
 
     await fastify.register(helmet, {

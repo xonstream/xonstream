@@ -212,7 +212,51 @@ module.exports = async (fastify, opts) => {
           total = 0;
         } else {
           searchResults = results || [];
-          total = count || 0;
+          // Fallback: when count is null (can happen with complex multi-join queries in
+          // production/PostgREST), run a separate lightweight count-only query.
+          if (count !== null && count !== undefined) {
+            total = count;
+          } else {
+            try {
+              let fallbackCountQuery = supabase
+                .from('posts')
+                .select('id', { count: 'exact', head: true });
+
+              // Re-apply the same text search condition
+              if (normalizedQuery && normalizedQuery.length > 0) {
+                const words = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
+                if (words.length > 0) {
+                  const wordConditions = words.map(word => {
+                    const escapedWord = word
+                      .replace(/\\/g, '\\\\')
+                      .replace(/"/g, '\\"')
+                      .replace(/%/g, '\\%')
+                      .replace(/_/g, '\\_');
+                    return `or(title.ilike."%${escapedWord}%",description.ilike."%${escapedWord}%")`;
+                  });
+                  fallbackCountQuery = fallbackCountQuery.or(`and(${wordConditions.join(',')})`);
+                }
+              }
+              if (channelId) {
+                fallbackCountQuery = fallbackCountQuery.eq('channel_id', channelId);
+              }
+              if (category && categoryPostIds && categoryPostIds.length > 0) {
+                fallbackCountQuery = fallbackCountQuery.in('id', categoryPostIds);
+              }
+
+              const { count: fallbackCount, error: countError } = await fallbackCountQuery;
+              if (!countError && fallbackCount !== null) {
+                total = fallbackCount;
+                logger.info(`Search used fallback count query: ${total}`);
+              } else {
+                total = searchResults.length;
+                logger.warn('Search fallback count also null, using result length');
+              }
+            } catch (countErr) {
+              total = searchResults.length;
+              logger.warn('Search fallback count query failed:', countErr.message);
+            }
+          }
         }
         
         logger.info(`Search results summary:`, {

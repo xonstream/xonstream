@@ -118,7 +118,18 @@ module.exports = async (fastify, opts) => {
         }
 
         posts = postsData || [];
-        total = count || 0;
+        // Fallback: when count is null (can happen with complex multi-join queries in
+        // production/PostgREST), run a separate lightweight count-only query.
+        if (count !== null && count !== undefined) {
+          total = count;
+        } else {
+          const { count: fallbackCount } = await supabase
+            .from('posts')
+            .select('id', { count: 'exact', head: true })
+            .in('id', postIds);
+          total = fallbackCount || postIds.length;
+          logger.info(`Actor posts used fallback count: ${total}`);
+        }
       }
 
       // Fetch all categories for these posts from the junction table

@@ -193,13 +193,26 @@ module.exports = async (fastify, opts) => {
         throw error;
       }
 
-      const total = count || 0;
+      // Fallback: when count is null (can happen with complex multi-join queries in
+      // production/PostgREST), run a separate lightweight count-only query.
+      let resolvedChannelCount = count;
+      if (resolvedChannelCount === null || resolvedChannelCount === undefined) {
+        const { count: fallbackCount } = await supabase
+          .from('posts')
+          .select('id', { count: 'exact', head: true })
+          .eq('channel_id', id)
+          .ilike('title', titlePrefix);
+        resolvedChannelCount = fallbackCount || 0;
+        logger.info(`Channel posts used fallback count: ${resolvedChannelCount}`);
+      }
+
+      const total = resolvedChannelCount || 0;
 
       // IMPORTANT: Use validPosts count for accurate pagination
       // Supabase count includes all posts matching channel_id in the initial query
       // but we may have filtered out posts with wrong channel_id
       // Using validPosts.length ensures pagination only counts posts that will be displayed
-      const actualTotal = count;
+      const actualTotal = resolvedChannelCount;
 
       // Fetch all categories for these posts from the junction table
       const postIds = (validPosts || []).map(p => p.id);

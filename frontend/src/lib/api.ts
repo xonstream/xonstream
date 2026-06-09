@@ -11,7 +11,51 @@ if (!API_BASE_URL) {
 // Export API base - will be undefined if env var is not set
 export const API_BASE = API_BASE_URL || '';
 
-// Admin authentication helpers
+// ─── Admin Token Helpers ───────────────────────────────────────────────────────
+// Store the JWT in localStorage so it survives page reloads and can be sent as
+// an Authorization: Bearer header — works cross-origin unlike SameSite cookies.
+const ADMIN_TOKEN_KEY = 'xonstream_admin_token';
+
+export function setAdminToken(token: string): void {
+  localStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+export function getAdminToken(): string | null {
+  return localStorage.getItem(ADMIN_TOKEN_KEY);
+}
+
+export function clearAdminToken(): void {
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+/**
+ * Returns headers that include the Authorization Bearer token when available.
+ * Merge this into any admin fetch call: { headers: adminAuthHeaders() }
+ */
+export function adminAuthHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = getAdminToken();
+  return {
+    ...extra,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+/**
+ * Wrapper around fetch for all admin-protected endpoints.
+ * Sends both the cookie (for backward compat) AND an Authorization Bearer token
+ * so it works even when cross-origin cookies are blocked by the browser.
+ */
+async function adminFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const { headers: extraHeaders, ...rest } = options;
+  return fetch(url, {
+    credentials: 'include',
+    ...rest,
+    headers: adminAuthHeaders(extraHeaders as Record<string, string> | undefined ?? {}),
+  });
+}
+
+// ─── Admin Auth ───────────────────────────────────────────────────────────────
+
 export async function adminLogin(username: string, password: string): Promise<{ success: boolean; message?: string }> {
   try {
     const res = await fetch(`${API_BASE}/api/admin/login`, {
@@ -20,7 +64,12 @@ export async function adminLogin(username: string, password: string): Promise<{ 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    return res.json();
+    const data = await res.json();
+    // Store the JWT so all subsequent admin calls can send it as Authorization: Bearer
+    if (data.success && data.token) {
+      setAdminToken(data.token);
+    }
+    return data;
   } catch (error) {
     console.error('Admin login failed');
     return { success: false, message: 'Login failed. Please try again.' };
@@ -29,13 +78,14 @@ export async function adminLogin(username: string, password: string): Promise<{ 
 
 export async function adminLogout(): Promise<{ success: boolean }> {
   try {
-    const res = await fetch(`${API_BASE}/api/admin/logout`, {
+    const res = await adminFetch(`${API_BASE}/api/admin/logout`, {
       method: 'POST',
-      credentials: 'include',
     });
+    clearAdminToken();
     return res.json();
   } catch (error) {
     console.error('Admin logout failed');
+    clearAdminToken();
     return { success: false };
   }
 }
@@ -63,10 +113,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 // ─── Posts ────────────────────────────────────────────────────────────────────
 
 export async function fetchAdminPosts(): Promise<{ success: boolean; data: Post[] }> {
-  // Use dedicated admin endpoint to get all posts with full details
-  const res = await fetch(`${API_BASE}/api/admin/posts`, {
-    credentials: 'include',
-  });
+  // Use dedicated admin endpoint to get all posts with full details.
+  // adminFetch sends both the cookie AND Authorization: Bearer so it works cross-origin.
+  const res = await adminFetch(`${API_BASE}/api/admin/posts`);
   const json = await res.json();
   return json;
 }
@@ -124,10 +173,9 @@ export async function saveChannel(ch: Channel): Promise<{ success: boolean }> {
   const isEdit = ch.id && !ch.id.startsWith('ch-');
   const url = isEdit ? `${API_BASE}/api/admin/channels/${ch.id}` : `${API_BASE}/api/admin/channels`;
   const method = isEdit ? 'PUT' : 'POST';
-  
-  const res = await fetch(url, {
+
+  const res = await adminFetch(url, {
     method,
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(ch),
   });
@@ -135,9 +183,8 @@ export async function saveChannel(ch: Channel): Promise<{ success: boolean }> {
 }
 
 export async function deleteChannel(id: string): Promise<{ success: boolean }> {
-  const res = await fetch(`${API_BASE}/api/admin/channels/${id}`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/channels/${id}`, {
     method: 'DELETE',
-    credentials: 'include',
   });
   return res.json();
 }
@@ -171,10 +218,9 @@ export async function saveActor(actor: Actor): Promise<{ success: boolean }> {
   const isEdit = actor.id && !actor.id.startsWith('actor-');
   const url = isEdit ? `${API_BASE}/api/admin/actors/${actor.id}` : `${API_BASE}/api/admin/actors`;
   const method = isEdit ? 'PUT' : 'POST';
-  
-  const res = await fetch(url, {
+
+  const res = await adminFetch(url, {
     method,
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(actor),
   });
@@ -182,9 +228,8 @@ export async function saveActor(actor: Actor): Promise<{ success: boolean }> {
 }
 
 export async function deleteActor(id: string): Promise<{ success: boolean }> {
-  const res = await fetch(`${API_BASE}/api/admin/actors/${id}`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/actors/${id}`, {
     method: 'DELETE',
-    credentials: 'include',
   });
   return res.json();
 }
@@ -202,13 +247,13 @@ export async function fetchPlayerSettings(): Promise<{ success: boolean; data: P
 }
 
 export async function fetchAdminPlayerSettings(): Promise<{ success: boolean; data: PlayerSettings }> {
-  return apiFetch(`/api/admin/settings/player`, { credentials: 'include' });
+  const res = await adminFetch(`${API_BASE}/api/admin/settings/player`);
+  return res.json();
 }
 
 export async function updatePlayerSettings(autoPlay: boolean, defaultServer: 'SERVER_01' | 'SERVER_02' = 'SERVER_01'): Promise<{ success: boolean; message: string; data: PlayerSettings }> {
-  const res = await fetch(`${API_BASE}/api/admin/settings/player`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/settings/player`, {
     method: 'PUT',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ autoPlay, defaultServer }),
   });
@@ -236,10 +281,9 @@ export async function saveCategory(category: Category): Promise<{ success: boole
   const isEdit = category.id && !category.id.startsWith('cat-');
   const url = isEdit ? `${API_BASE}/api/admin/categories/${category.id}` : `${API_BASE}/api/admin/categories`;
   const method = isEdit ? 'PUT' : 'POST';
-  
-  const res = await fetch(url, {
+
+  const res = await adminFetch(url, {
     method,
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(category),
   });
@@ -251,9 +295,8 @@ export async function saveCategory(category: Category): Promise<{ success: boole
 }
 
 export async function deleteCategory(id: string): Promise<{ success: boolean; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/admin/categories/${id}`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/categories/${id}`, {
     method: 'DELETE',
-    credentials: 'include',
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -264,9 +307,8 @@ export async function deleteCategory(id: string): Promise<{ success: boolean; me
 
 // Admin sync and posts
 export async function syncPosts(startPage?: number, endPage?: number): Promise<{ success: boolean; data?: any; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/admin/sync`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/sync`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ startPage, endPage }),
   });
@@ -274,17 +316,15 @@ export async function syncPosts(startPage?: number, endPage?: number): Promise<{
 }
 
 export async function deleteAllPosts(): Promise<{ success: boolean; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/admin/posts/all`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/posts/all`, {
     method: 'DELETE',
-    credentials: 'include',
   });
   return res.json();
 }
 
 export async function deleteDuplicates(): Promise<{ success: boolean; data?: any; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/admin/posts/delete-duplicates`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/posts/delete-duplicates`, {
     method: 'POST',
-    credentials: 'include',
   });
   return res.json();
 }
@@ -313,9 +353,7 @@ export async function submitSupportRequest(fullName: string, email: string, desc
 }
 
 export async function fetchSupportRequests(): Promise<{ success: boolean; data: SupportRequest[] }> {
-  const res = await fetch(`${API_BASE}/api/admin/support`, {
-    credentials: 'include',
-  });
+  const res = await adminFetch(`${API_BASE}/api/admin/support`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message || body.error || `API error ${res.status}`);
@@ -325,9 +363,8 @@ export async function fetchSupportRequests(): Promise<{ success: boolean; data: 
 
 export async function deleteSupportRequest(key: string): Promise<{ success: boolean; message?: string }> {
   const params = new URLSearchParams({ key });
-  const res = await fetch(`${API_BASE}/api/admin/support?${params.toString()}`, {
+  const res = await adminFetch(`${API_BASE}/api/admin/support?${params.toString()}`, {
     method: 'DELETE',
-    credentials: 'include',
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

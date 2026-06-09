@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signOut, getSettings, saveSettings } from '@/lib/store';
-import { API_BASE, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, deleteDuplicates, adminLogout, fetchSupportRequests, deleteSupportRequest } from '@/lib/api';
+import { API_BASE, adminAuthHeaders, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, deleteDuplicates, adminLogout, fetchSupportRequests, deleteSupportRequest } from '@/lib/api';
 import type { SupportRequest } from '@/lib/api';
 import Loader from '@/components/Loader';
 
@@ -157,7 +157,7 @@ async function fetchPlayerDomain(): Promise<string> {
   if (cachedPlayerDomain) return cachedPlayerDomain;
   
   try {
-    const res = await fetch('/api/public/config');
+    const res = await fetch(`${API_BASE}/api/public/config`);
     const json = await res.json();
     if (json.success && json.data.playerDomain) {
       cachedPlayerDomain = json.data.playerDomain;
@@ -765,7 +765,7 @@ export default function AdminPage() {
       const resp = await fetch(`${API_BASE}/api/admin/posts${isEdit ? `/${postId}` : ''}`, {
         method: isEdit ? 'PUT' : 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       });
       
@@ -797,7 +797,7 @@ export default function AdminPage() {
   const handleDeletePost = async (id: string) => {
     if (!window.confirm('Delete this post?')) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { method: 'DELETE', credentials: 'include' });
+      const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
       const json = await resp.json();
       if (json.success) { toast.success('Post deleted ✓'); fetchBackendPosts(); }
       else toast.error(json.message || 'Delete failed');
@@ -832,7 +832,7 @@ export default function AdminPage() {
       const resp = await fetch(`${API_BASE}/api/admin/posts`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ ids: idsArray }),
       });
       const json = await resp.json();
@@ -900,7 +900,7 @@ export default function AdminPage() {
       const resp = await fetch(`${API_BASE}/api/admin/posts/bulk-edit`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(bulkPayload),
       });
       
@@ -939,6 +939,7 @@ export default function AdminPage() {
       const response = await fetch(`${API_BASE}/api/admin/posts/clean-titles`, {
         method: 'POST',
         credentials: 'include',
+        headers: adminAuthHeaders(),
       });
       
       const result = await response.json();
@@ -1213,6 +1214,7 @@ export default function AdminPage() {
                   const resp = await fetch(`${API_BASE}/api/admin/cache/flush`, {
                     method: 'POST',
                     credentials: 'include',
+                    headers: adminAuthHeaders(),
                   });
                   const json = await resp.json();
                   if (json.success) {
