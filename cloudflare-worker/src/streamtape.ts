@@ -56,10 +56,48 @@ export async function getStreamtapeFileInfo(fileId: string, env: Bindings): Prom
 
 export async function getAllStreamtapeFiles(folderId = '', env: Bindings): Promise<any[]> {
   try {
-    const params: Record<string, string> = {};
-    if (folderId) params.folder = folderId;
-    const result = await fetchStreamtapeApi('/file/listfolder', params, env);
-    return result?.files || [];
+    const allFiles: any[] = [];
+    const visitedFolders = new Set<string>();
+    const folderQueue: string[] = [folderId];
+
+    while (folderQueue.length > 0) {
+      const currentFolder = folderQueue.shift() || '';
+      if (visitedFolders.has(currentFolder)) continue;
+      visitedFolders.add(currentFolder);
+
+      try {
+        const params: Record<string, string> = {};
+        if (currentFolder) params.folder = currentFolder;
+        const result = await fetchStreamtapeApi('/file/listfolder', params, env);
+
+        if (result && Array.isArray(result.files)) {
+          for (const file of result.files) {
+            const vid = file.linkid || file.id;
+            if (vid) {
+              allFiles.push({
+                linkid: vid,
+                id: vid,
+                name: file.name || 'Untitled Video',
+                size: file.size || 0,
+                created_at: file.created_at
+              });
+            }
+          }
+        }
+
+        if (result && Array.isArray(result.folders)) {
+          for (const folder of result.folders) {
+            if (folder.id && !visitedFolders.has(folder.id)) {
+              folderQueue.push(folder.id);
+            }
+          }
+        }
+      } catch (err) {
+        if (currentFolder === '') throw err;
+      }
+    }
+
+    return allFiles;
   } catch (err) {
     return [];
   }
