@@ -1,143 +1,78 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signOut, getSettings, saveSettings } from '@/lib/store';
-import { API_BASE, adminAuthHeaders, fetchAdminPosts, fetchChannels, fetchActors, saveChannel, saveActor, deleteChannel, deleteActor, fetchAdminPlayerSettings, updatePlayerSettings, fetchCategories, saveCategory, deleteCategory, syncPosts, deleteAllPosts, deleteDuplicates, adminLogout, fetchSupportRequests, deleteSupportRequest } from '@/lib/api';
-import type { SupportRequest } from '@/lib/api';
+import { 
+  API_BASE, 
+  fetchAdminPosts, 
+  fetchChannels, 
+  fetchActors, 
+  saveChannel, 
+  saveActor, 
+  deleteChannel, 
+  deleteActor, 
+  fetchAdminPlayerSettings, 
+  updatePlayerSettings, 
+  fetchCategories, 
+  saveCategory, 
+  deleteCategory, 
+  savePost,
+  deletePost,
+  bulkDeletePosts,
+  bulkEditPosts,
+  bulkDeleteChannels,
+  bulkCreateChannels,
+  bulkDeleteActors,
+  bulkCreateActors,
+  bulkDeleteCategories,
+  bulkCreateCategories,
+  adminLogout,
+  fetchStreamtapeVideos,
+  createStreamtapePost,
+  bulkCreateStreamtapePosts,
+  optimizeDatabaseStorage,
+  type StreamtapeVideoItem,
+  type PlayerSettings
+} from '@/lib/api';
 import Loader from '@/components/Loader';
-
-import type { Channel, Actor, Category, Post, VideoSourceInput } from '@/lib/types';
-import { BarChart3, Film, Tv, Users, Tag, Settings, LogOut, Plus, Pencil, Trash2, Menu, X, RefreshCw, Search, Sparkles, MessageSquare, CopyX } from 'lucide-react';
+import type { Channel, Actor, Category, Post } from '@/lib/types';
+import { 
+  BarChart3, 
+  Film, 
+  Tv, 
+  Users, 
+  Tag, 
+  Settings, 
+  LogOut, 
+  Plus, 
+  Pencil, 
+  Trash2, 
+  Menu, 
+  X, 
+  RefreshCw, 
+  Search, 
+  Sparkles, 
+  DownloadCloud, 
+  CheckCircle2, 
+  Video, 
+  Check, 
+  Layers, 
+  Sliders, 
+  ExternalLink, 
+  ShieldCheck, 
+  ChevronRight, 
+  CheckSquare, 
+  Square,
+  AlertTriangle,
+  FolderPlus,
+  Play,
+  Maximize2,
+  Wand2
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { generateDescriptionOptions, type DescriptionOption } from '@/lib/descriptionGenerator';
 
-type AdminTab = 'dashboard' | 'posts' | 'channels' | 'actors' | 'categories' | 'settings' | 'player-settings' | 'support';
-
-// Cloud/Rocket Loading Animation Component
-function RocketLoader({ text = 'Loading' }: { text?: string }) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="relative w-[300px] h-[200px]">
-        {/* Clouds */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="cloud cloud1 absolute w-[100px] h-[60px] bg-white/25 rounded-full top-[15%] animate-moveClouds1" />
-          <div className="cloud cloud2 absolute w-[150px] h-[80px] bg-white/25 rounded-full top-[35%] animate-moveClouds2" />
-          <div className="cloud cloud3 absolute w-[80px] h-[50px] bg-white/25 rounded-full top-[20%] animate-moveClouds3" />
-          <div className="cloud cloud4 absolute w-[100px] h-[80px] bg-white/25 rounded-full top-[70%] animate-moveClouds4" />
-          <div className="cloud cloud5 absolute w-[170px] h-[50px] bg-white/25 rounded-full top-[80%] animate-moveClouds5" />
-        </div>
-        
-        {/* Rocket */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-speeder">
-          <div className="relative">
-            {/* Rocket body */}
-            <div className="w-[35px] h-[5px] bg-[#f51313] rounded-[2px_10px_1px_0] absolute -top-[19px] left-[60px]" />
-            
-            {/* Base flame */}
-            <div className="relative">
-              <div className="w-0 h-0 border-t-[6px] border-t-transparent border-r-[100px] border-r-[#f3cfcf] border-b-[6px] border-b-transparent" />
-              <div className="absolute -right-[110px] -top-[16px] w-[22px] h-[22px] bg-[#f3cfcf] rounded-full" />
-              <div className="absolute -right-[98px] -top-[16px] w-0 h-0 border-t-0 border-t-transparent border-r-[55px] border-r-[#f3cfcf] border-b-[16px] border-b-transparent" />
-              
-              {/* Rocket face */}
-              <div className="absolute -right-[125px] -top-[15px] w-[20px] h-[12px] bg-[#f3cfcf] rounded-[20px_20px_0_0] rotate-[-40deg]">
-                <div className="absolute right-[4px] top-[7px] w-[12px] h-[12px] bg-[#f51313] rotate-40 rounded-[0_0_2px_2px]" />
-              </div>
-            </div>
-            
-            {/* Fazer lines */}
-            <div className="absolute -top-[19px] left-[60px]">
-              <div className="w-[30px] h-[1px] bg-white animate-fazer1" />
-              <div className="w-[30px] h-[1px] bg-white top-[3px] absolute animate-fazer2" />
-              <div className="w-[30px] h-[1px] bg-white top-[1px] absolute animate-fazer3" />
-              <div className="w-[30px] h-[1px] bg-white top-[4px] absolute animate-fazer4" />
-            </div>
-          </div>
-        </div>
-        
-        {/* Long fazers */}
-        <div className="absolute inset-0">
-          <div className="absolute top-[20%] h-[2px] w-[20%] bg-white animate-lf1" />
-          <div className="absolute top-[40%] h-[2px] w-[20%] bg-white animate-lf2" />
-          <div className="absolute top-[60%] h-[2px] w-[20%] bg-white animate-lf3" />
-          <div className="absolute top-[80%] h-[2px] w-[20%] bg-white animate-lf4" />
-        </div>
-        
-        {/* Loading text */}
-        <div className="absolute bottom-0 left-0 right-0 text-center">
-          <p className="text-lg font-bold text-foreground">{text}...</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Done Animation Component
-function DoneAnimation({ onComplete }: { onComplete: () => void }) {
-  React.useEffect(() => {
-    const timer = setTimeout(onComplete, 1500);
-    return () => clearTimeout(timer);
-  }, [onComplete]);
-  
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="text-center">
-        <div className="text-6xl mb-4 animate-bounce">✓</div>
-        <p className="text-2xl font-bold text-foreground">Done!</p>
-      </div>
-    </div>
-  );
-}
-
-function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-[12px] w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-lg font-bold text-foreground">{title}</h2>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-secondary"><X className="w-5 h-5 text-muted-foreground" /></button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-  return (
-    <div className="mb-3">
-      <label className="text-sm font-medium text-foreground block mb-1">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full px-4 py-2 bg-secondary rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring border border-border" />
-    </div>
-  );
-}
-
-// Textarea field that auto-resizes based on content
-function TextAreaField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return (
-    <div className="mb-3">
-      <label className="text-sm font-medium text-foreground block mb-1">{label}</label>
-      <textarea 
-        value={value} 
-        onChange={e => onChange(e.target.value)} 
-        placeholder={placeholder}
-        rows={2}
-        className="w-full px-4 py-2 bg-secondary rounded-[12px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring border border-border resize-none overflow-hidden"
-        onInput={(e) => {
-          const target = e.target as HTMLTextAreaElement;
-          target.style.height = 'auto';
-          target.style.height = target.scrollHeight + 'px';
-        }}
-      />
-    </div>
-  );
-}
-
-const LS_KEYS = { posts: 'vidstream_posts', channels: 'vidstream_channels', actors: 'vidstream_actors', categories: 'vidstream_categories' };
-
-// Player domain cache - fetched from backend
-let cachedPlayerDomain: string | null = null;
+type AdminTab = 'dashboard' | 'posts' | 'channels' | 'actors' | 'categories' | 'player-settings';
 
 // Helper to build full thumbnail URL from path
 function buildThumbnailUrl(thumbnailPath: string): string {
@@ -145,86 +80,160 @@ function buildThumbnailUrl(thumbnailPath: string): string {
   if (thumbnailPath.startsWith('http://') || thumbnailPath.startsWith('https://')) {
     return thumbnailPath;
   }
-  // Use cached domain or fallback (will be updated from backend config)
-  const playerDomain = cachedPlayerDomain || 'xonstream.seeks.cloud';
-  const domain = `https://${playerDomain}`;
-  const path = thumbnailPath.startsWith('/') ? thumbnailPath : `/${thumbnailPath}`;
-  return `${domain}${path}`;
+  return `https://thumb.tapecontent.net/thumb/${thumbnailPath}/thumb.jpg`;
 }
 
-// Fetch player domain from backend config
-async function fetchPlayerDomain(): Promise<string> {
-  if (cachedPlayerDomain) return cachedPlayerDomain;
-  
-  try {
-    const res = await fetch(`${API_BASE}/api/public/config`);
-    const json = await res.json();
-    if (json.success && json.data.playerDomain) {
-      cachedPlayerDomain = json.data.playerDomain;
-      return cachedPlayerDomain;
-    }
-  } catch (error) {
-    // Silently use fallback in production
-  }
-  
-  return 'xonstream.seeks.cloud';
+// ── Shared Modal Component ──────────────────────────────────────────────────
+function Modal({ 
+  open, 
+  onClose, 
+  title, 
+  subtitle,
+  children,
+  maxWidth = 'max-w-xl'
+}: { 
+  open: boolean; 
+  onClose: () => void; 
+  title: string; 
+  subtitle?: string;
+  children: React.ReactNode;
+  maxWidth?: string;
+}) {
+  if (!open) return null;
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-150" 
+      onClick={onClose}
+    >
+      <div 
+        className={`bg-[#12131a]/95 border border-white/10 rounded-t-3xl sm:rounded-3xl w-full ${maxWidth} max-h-[92vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl shadow-black/80 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-150`} 
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/10 bg-white/[0.02]">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">{title}</h2>
+            {subtitle && <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+          </div>
+          <button 
+            onClick={onClose} 
+            className="p-2 rounded-xl hover:bg-white/10 text-muted-foreground hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-// Initialize player domain on app load
-fetchPlayerDomain();
-
-function loadData<T>(key: string, fallback: T[]): T[] {
-  const raw = localStorage.getItem(key);
-  return raw ? JSON.parse(raw) : fallback;
+// ── Form Input Fields ────────────────────────────────────────────────────────
+function Field({ 
+  label, 
+  value, 
+  onChange, 
+  placeholder, 
+  type = 'text',
+  hint
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (v: string) => void; 
+  placeholder?: string; 
+  type?: string;
+  hint?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">{label}</label>
+      <input 
+        type={type} 
+        value={value} 
+        onChange={e => onChange(e.target.value)} 
+        placeholder={placeholder}
+        className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all placeholder:text-gray-500" 
+      />
+      {hint && <p className="text-[11px] text-gray-500">{hint}</p>}
+    </div>
+  );
 }
-function saveData<T>(key: string, data: T[]) {
-  localStorage.setItem(key, JSON.stringify(data));
+
+function TextAreaField({ 
+  label, 
+  value, 
+  onChange, 
+  placeholder, 
+  rows = 3,
+  hint
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (v: string) => void; 
+  placeholder?: string; 
+  rows?: number;
+  hint?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">{label}</label>
+      <textarea 
+        value={value} 
+        onChange={e => onChange(e.target.value)} 
+        placeholder={placeholder}
+        rows={rows}
+        className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all placeholder:text-gray-500 resize-none" 
+      />
+      {hint && <p className="text-[11px] text-gray-500">{hint}</p>}
+    </div>
+  );
 }
 
-function parseDescription(desc: string) {
-  if (!desc) return { type: 'general', cleanDesc: '' };
-  const match = desc.match(/^\[Type:\s*([^\]]+)\]\s*(.*)$/i);
-  if (match) {
-    return {
-      type: match[1].toLowerCase(),
-      cleanDesc: match[2]
-    };
-  }
-  return {
-    type: 'general',
-    cleanDesc: desc
-  };
-}
-
-// ── Search+Select dropdown ──
-function SearchSelect({ label, value, onChange, options, placeholder }: { 
-  label: string; value: string; onChange: (v: string) => void; options: string[]; placeholder?: string;
+// ── Search+Select Dropdown ───────────────────────────────────────────────────
+function SearchSelect({ 
+  label, 
+  value, 
+  onChange, 
+  options, 
+  placeholder 
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (v: string) => void; 
+  options: string[]; 
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  // When query is empty (just focused), show ALL options; when user types, filter
   const filtered = query ? options.filter(o => o.toLowerCase().includes(query.toLowerCase())) : options;
   return (
-    <div className="mb-3 relative">
-      <label className="text-sm font-medium text-foreground block mb-1">{label}</label>
+    <div className="space-y-1.5 relative">
+      <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">{label}</label>
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           value={open ? query : value}
           onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
           onFocus={() => { setQuery(value); setOpen(true); }}
           onBlur={() => setTimeout(() => { setOpen(false); setQuery(''); }, 200)}
           placeholder={placeholder || `Search ${label.toLowerCase()}...`}
-          className="w-full pl-9 pr-4 py-2 bg-secondary rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring border border-border" />
+          className="w-full pl-9 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all placeholder:text-gray-500" 
+        />
       </div>
       {open && (
-        <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-card border border-border rounded-[12px] shadow-lg">
+        <div className="absolute z-30 mt-1 w-full max-h-52 overflow-y-auto bg-[#1a1b24] border border-white/15 rounded-xl shadow-2xl py-1">
           {filtered.length === 0 ? (
-            <div className="px-4 py-2 text-sm text-muted-foreground italic">No results found</div>
-          ) : filtered.slice(0, 20).map(o => (
-            <button key={o} type="button" onMouseDown={() => { onChange(o); setQuery(''); setOpen(false); }}
-              className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors first:rounded-t-[12px] last:rounded-b-[12px]">
-              {o}
+            <div className="px-4 py-2.5 text-xs text-muted-foreground italic">No matches found</div>
+          ) : filtered.slice(0, 30).map(o => (
+            <button 
+              key={o} 
+              type="button" 
+              onMouseDown={() => { onChange(o); setQuery(''); setOpen(false); }}
+              className="w-full text-left px-4 py-2 text-xs text-gray-200 hover:bg-accent/20 hover:text-accent font-medium transition-colors flex items-center justify-between"
+            >
+              <span>{o}</span>
+              {value === o && <Check className="w-3.5 h-3.5 text-accent" />}
             </button>
           ))}
         </div>
@@ -233,1941 +242,3141 @@ function SearchSelect({ label, value, onChange, options, placeholder }: {
   );
 }
 
-// Simple thumbnail component that handles errors properly
-function Thumbnail({ post }: { post: Post }) {
-  const [error, setError] = useState(false);
-  
-  // Build full URL from thumbnail path
-  const thumbnailSrc = post.thumbnail && post.thumbnail.trim() !== '' && post.thumbnail !== 'null' && post.thumbnail !== 'undefined' 
-    ? buildThumbnailUrl(post.thumbnail)
-    : null;
-  
-  const src = thumbnailSrc;
-
-  // Debug: Log when thumbnail fails to load (development only)
-  const handleError = () => {
-    if (import.meta.env.DEV) {
-      console.warn(`Thumbnail failed to load for post "${post.title}":`, {
-        originalPath: post.thumbnail,
-        builtUrl: thumbnailSrc,
-        src
-      });
-    }
-    setError(true);
-  };
-
-  // If no valid source, show fallback immediately
-  if (!src || error) {
-    return (
-      <div className="w-20 h-12 rounded-[8px] bg-gradient-to-br from-accent/30 to-secondary flex items-center justify-center">
-        <span className="text-lg font-bold text-foreground/50 uppercase">{(post.title || '?')[0]}</span>
-      </div>
-    );
-  }
-
-  return (
-    <img 
-      src={src} 
-      alt={post.title} 
-      className="w-20 h-12 rounded-[8px] object-cover bg-secondary block"
-      loading="lazy"
-      onError={handleError}
-    />
-  );
-}
-
-// Mobile thumbnail component
-function MobileThumbnail({ post }: { post: Post }) {
-  const [error, setError] = useState(false);
-  
-  // Build full URL from thumbnail path
-  const thumbnailSrc = post.thumbnail && post.thumbnail.trim() !== '' && post.thumbnail !== 'null' && post.thumbnail !== 'undefined' 
-    ? buildThumbnailUrl(post.thumbnail)
-    : null;
-  
-  const src = thumbnailSrc;
-
-  // Debug: Log when mobile thumbnail fails to load (development only)
-  const handleError = () => {
-    if (import.meta.env.DEV) {
-      console.warn(`Mobile thumbnail failed to load for post "${post.title}":`, {
-        originalPath: post.thumbnail,
-        builtUrl: thumbnailSrc,
-        src
-      });
-    }
-    setError(true);
-  };
-
-  if (!src || error) {
-    return (
-      <div className="w-16 h-10 rounded-[8px] bg-gradient-to-br from-accent/30 to-secondary flex-shrink-0 flex items-center justify-center">
-        <span className="text-sm font-bold text-foreground/50 uppercase">{(post.title || '?')[0]}</span>
-      </div>
-    );
-  }
-
-  return (
-    <img 
-      src={src} 
-      alt={post.title} 
-      className="w-16 h-10 rounded-[8px] object-cover bg-secondary block flex-shrink-0"
-      loading="lazy"
-      onError={handleError}
-    />
-  );
-}
-function ActorMultiSelect({ selected, onChange, options }: {
-  selected: string[]; onChange: (v: string[]) => void; options: string[];
+// ── Real-time Search Category Tag Picker ──────────────────────────────────────
+function CategorySearchPicker({
+  label,
+  options,
+  selected,
+  onChange
+}: {
+  label: string;
+  options: { id: string; name: string }[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
 }) {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-  const filtered = query ? options.filter(o => o.toLowerCase().includes(query.toLowerCase()) && !selected.includes(o)) : options.filter(o => !selected.includes(o));
-  const addActor = (name: string) => { onChange([...selected, name]); setQuery(''); };
-  const removeActor = (name: string) => onChange(selected.filter(a => a !== name));
-  return (
-    <div className="mb-3 relative">
-      <label className="text-sm font-medium text-foreground block mb-1">Actors</label>
-      <div className="flex flex-wrap gap-1.5 mb-1.5">
-        {selected.map(a => (
-          <span key={a} className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent/20 text-accent text-xs rounded-full">
-            {a} <button type="button" onClick={() => removeActor(a)} className="hover:text-foreground"><X className="w-3 h-3" /></button>
-          </span>
-        ))}
-      </div>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-        <input value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 200)}
-          placeholder="Search actors..."
-          className="w-full pl-9 pr-4 py-2 bg-secondary rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring border border-border" />
-      </div>
-      {open && filtered.length > 0 && (
-        <div className="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto bg-card border border-border rounded-[12px] shadow-lg">
-          {filtered.slice(0, 8).map(o => (
-            <button key={o} type="button" onMouseDown={() => addActor(o)}
-              className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors first:rounded-t-[12px] last:rounded-b-[12px]">
-              {o}
-            </button>
-          ))}
-        </div>
-      )}
-      {query && !options.includes(query) && (
-        <button type="button" onMouseDown={() => addActor(query)}
-          className="mt-1 text-xs text-accent hover:underline">+ Add "{query}" as new actor</button>
-      )}
-    </div>
-  );
-}
 
-// ── Category multi-select (same pattern as ActorMultiSelect) ──
-function CategoryMultiSelect({ selected, onChange, options }: {
-  selected: string[]; onChange: (v: string[]) => void; options: string[];
-}) {
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
   const filtered = query
-    ? options.filter(o => o.toLowerCase().includes(query.toLowerCase()) && !selected.includes(o))
-    : options.filter(o => !selected.includes(o));
-  const addCat = (name: string) => { onChange([...selected, name]); setQuery(''); };
-  const removeCat = (name: string) => onChange(selected.filter(c => c !== name));
+    ? options.filter(o => o.name.toLowerCase().includes(query.toLowerCase()))
+    : options;
+
+  const toggle = (id: string) => {
+    if (selected.includes(id)) {
+      onChange(selected.filter(s => s !== id));
+    } else {
+      onChange([...selected, id]);
+    }
+  };
+
   return (
-    <div className="mb-3 relative">
-      <label className="text-sm font-medium text-foreground block mb-1">Categories</label>
-      <div className="flex flex-wrap gap-1.5 mb-1.5">
-        {selected.map(c => (
-          <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/20 text-primary text-xs rounded-full">
-            {c} <button type="button" onClick={() => removeCat(c)} className="hover:text-foreground"><X className="w-3 h-3" /></button>
-          </span>
-        ))}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">{label}</label>
+        <span className="text-[11px] text-accent font-mono">{selected.length} selected</span>
       </div>
+
+      {/* Live search input */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-        <input value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 200)}
-          placeholder="Search categories..."
-          className="w-full pl-9 pr-4 py-2 bg-secondary rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring border border-border" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Type to filter categories in real-time..."
+          className="w-full pl-9 pr-8 py-2 bg-black/40 border border-white/10 rounded-xl text-white text-xs outline-none focus:border-accent"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
-      {open && filtered.length > 0 && (
-        <div className="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto bg-card border border-border rounded-[12px] shadow-lg">
-          {filtered.slice(0, 10).map(o => (
-            <button key={o} type="button" onMouseDown={() => addCat(o)}
-              className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors first:rounded-t-[12px] last:rounded-b-[12px]">
-              {o}
+
+      {/* Filtered Chips / Categories list */}
+      <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 bg-black/30 border border-white/10 rounded-xl">
+        {filtered.map(opt => {
+          const isSelected = selected.includes(opt.id);
+          return (
+            <button
+              type="button"
+              key={opt.id}
+              onClick={() => toggle(opt.id)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                isSelected
+                  ? 'bg-accent text-white shadow-md shadow-accent/30 border border-accent'
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/5'
+              }`}
+            >
+              {isSelected && <Check className="w-3 h-3" />}
+              <span>{opt.name}</span>
             </button>
-          ))}
-        </div>
-      )}
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="w-full py-2 text-center text-xs text-gray-500 italic">
+            No matching categories for "{query}"
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
+// ── Real-time Search Actor Autocomplete Picker ────────────────────────────────
+function ActorSearchPicker({
+  label,
+  existingActors,
+  selectedActors,
+  onChange
+}: {
+  label: string;
+  existingActors: { id: string; name: string; image?: string }[];
+  selectedActors: string[];
+  onChange: (actors: string[]) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const filtered = query.trim()
+    ? existingActors.filter(a => 
+        a.name.toLowerCase().includes(query.trim().toLowerCase()) &&
+        !selectedActors.some(sa => sa.toLowerCase() === a.name.toLowerCase())
+      )
+    : [];
+
+  const addActor = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (!selectedActors.some(a => a.toLowerCase() === trimmed.toLowerCase())) {
+      onChange([...selectedActors, trimmed]);
+    }
+    setQuery('');
+    setOpen(false);
+  };
+
+  const removeActor = (name: string) => {
+    onChange(selectedActors.filter(a => a !== name));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      if (filtered.length > 0) {
+        addActor(filtered[0].name);
+      } else if (query.trim()) {
+        addActor(query.trim());
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-2 relative">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">{label}</label>
+        <span className="text-[11px] text-pink-400 font-mono">{selectedActors.length} added</span>
+      </div>
+
+      {/* Selected Actor Badges */}
+      {selectedActors.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 p-2 bg-black/30 border border-white/10 rounded-xl">
+          {selectedActors.map(actorName => (
+            <span
+              key={actorName}
+              className="px-2.5 py-1 rounded-lg bg-pink-500/20 text-pink-200 border border-pink-500/30 text-xs font-semibold flex items-center gap-1.5"
+            >
+              <span>{actorName}</span>
+              <button
+                type="button"
+                onClick={() => removeActor(actorName)}
+                className="text-pink-300 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Search Input with Real-time Dropdown */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type to search existing actors or press Enter to add..."
+          className="w-full pl-9 pr-16 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-xs outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20"
+        />
+        {query.trim() && (
+          <button
+            type="button"
+            onClick={() => addActor(query.trim())}
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded-lg text-[10px] font-bold"
+          >
+            Add
+          </button>
+        )}
+
+        {/* Autocomplete dropdown */}
+        {open && query.trim() && (
+          <div className="absolute z-40 mt-1 w-full max-h-52 overflow-y-auto bg-[#1a1b24] border border-white/15 rounded-xl shadow-2xl py-1">
+            {filtered.length > 0 ? (
+              filtered.slice(0, 20).map(a => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onMouseDown={() => addActor(a.name)}
+                  className="w-full text-left px-3 py-2 text-xs text-gray-200 hover:bg-pink-500/20 hover:text-pink-300 font-medium transition-colors flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2">
+                    {a.image ? (
+                      <img src={a.image} alt={a.name} className="w-5 h-5 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full bg-pink-500/20 text-pink-300 flex items-center justify-center text-[10px] font-bold">
+                        {a.name[0]}
+                      </div>
+                    )}
+                    <span>{a.name}</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400">Click to add</span>
+                </button>
+              ))
+            ) : (
+              <div 
+                onMouseDown={() => addActor(query.trim())}
+                className="px-3 py-2 text-xs text-pink-300 hover:bg-pink-500/20 cursor-pointer flex items-center justify-between"
+              >
+                <span>Add new actor: "<strong>{query.trim()}</strong>"</span>
+                <span className="text-[10px] text-gray-400">Press Enter</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Multi-Select Checkbox Pill Group (for bulk assignment) ───────────────────
+function MultiSelectChips({
+  label,
+  options,
+  selected,
+  onChange
+}: {
+  label: string;
+  options: { id: string; name: string }[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const toggle = (id: string) => {
+    if (selected.includes(id)) {
+      onChange(selected.filter(s => s !== id));
+    } else {
+      onChange([...selected, id]);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">{label}</label>
+      <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 bg-black/30 border border-white/10 rounded-xl">
+        {options.map(opt => {
+          const isSelected = selected.includes(opt.id);
+          return (
+            <button
+              type="button"
+              key={opt.id}
+              onClick={() => toggle(opt.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                isSelected
+                  ? 'bg-accent text-white shadow-md shadow-accent/30 border border-accent'
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/5'
+              }`}
+            >
+              {isSelected ? <Check className="w-3 h-3" /> : null}
+              {opt.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Admin Page Component ───────────────────────────────────────────────
 export default function AdminPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [user, setUser] = useState(() => {
-    const currentUser = getCurrentUser();
-    return currentUser;
-  });
-  
-  // Initialize tab from URL query parameter, default to 'dashboard'
-  const getInitialTab = (): AdminTab => {
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get('tab') as AdminTab;
-    if (tabParam && ['dashboard', 'posts', 'channels', 'actors', 'categories', 'player-settings', 'settings', 'support'].includes(tabParam)) {
-      return tabParam;
-    }
-    return 'dashboard';
-  };
-  
-  const [tab, setTab] = useState<AdminTab>(getInitialTab);
+
+  // Navigation State
+  const [tab, setTab] = useState<AdminTab>('dashboard');
+  const [postSubTab, setPostSubTab] = useState<'all' | 'streamtape'>('all');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [tabLoading, setTabLoading] = useState<Record<AdminTab, boolean>>({
-    dashboard: false,
-    posts: false,
-    channels: false,
-    actors: false,
-    categories: false,
-    settings: false,
-    'player-settings': false,
-    support: false
+
+  // Data States
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [actors, setActors] = useState<Actor[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [streamtapeVideos, setStreamtapeVideos] = useState<StreamtapeVideoItem[]>([]);
+  const [playerSettings, setPlayerSettings] = useState<PlayerSettings>({
+    autoPlay: true,
+    defaultServer: 'SERVER_01',
+    updatedAt: ''
   });
 
-  const [cats, setCats] = useState<Category[]>([]);
-  const [settings, setSettings] = useState(() => getSettings());
-  const [playerSettings, setPlayerSettings] = useState<{ autoPlay: boolean; defaultServer: 'SERVER_01' | 'SERVER_02'; updatedAt: string }>({ autoPlay: true, defaultServer: 'SERVER_01', updatedAt: '' });
-  const [modal, setModal] = useState<{ type: 'post' | 'channel' | 'actor' | 'category' | 'bulk'; mode: 'add' | 'edit'; data?: Post | Channel | Actor | Category } | null>(null);
-  const [form, setForm] = useState<Record<string, string>>({});
-  const [formActors, setFormActors] = useState<string[]>([]);
-  const [formCategories, setFormCategories] = useState<string[]>([]);
-  const [fetchedThumbnail, setFetchedThumbnail] = useState<string | null>(null);
+  // Loading States
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
-  // Pagination state for posts
-  const [currentPage, setCurrentPage] = useState(1);
-  const POSTS_PER_PAGE = 20;
+  // Selection States for Bulk Actions
+  const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [selectedActors, setSelectedActors] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedStreamtape, setSelectedStreamtape] = useState<string[]>([]);
 
-  // Loading animation state
-  const [buttonLoading, setButtonLoading] = useState<Record<string, boolean>>({});
-  const [buttonDone, setButtonDone] = useState<Record<string, boolean>>({});
-
-  // Real data from backend/GitHub
-  const [backendPosts, setBackendPosts] = useState<Post[]>([]);
-  const [chs, setChs] = useState<Channel[]>([]);
-  const [acts, setActs] = useState<Actor[]>([]);
-  const [loadingBackend, setLoadingBackend] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-
-  // Admin API calls now use credentials: 'include' for cookie-based auth
-
-  // Post search
+  // Search & Filter States
   const [postSearch, setPostSearch] = useState('');
-  const [postSortOrder, setPostSortOrder] = useState<'newest' | 'oldest'>('newest');
-
-  // Support messages search & state
-  const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
-  const [supportSearch, setSupportSearch] = useState('');
-  const [supportTypeFilter, setSupportTypeFilter] = useState<'all' | 'general' | 'bug' | 'request'>('all');
-
-  // Bulk selection
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkChannel, setBulkChannel] = useState('');
-  const [bulkCategories, setBulkCategories] = useState<string[]>([]);
-  const [bulkActors, setBulkActors] = useState<string[]>([]);
-  const [bulkAction, setBulkAction] = useState<'channel' | 'actors' | 'category' | 'delete'>('channel');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isBulkSaving, setIsBulkSaving] = useState(false);
+  const [postChannelFilter, setPostChannelFilter] = useState('all');
+  const [postCategoryFilter, setPostCategoryFilter] = useState('all');
   const [channelSearch, setChannelSearch] = useState('');
   const [actorSearch, setActorSearch] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
-  const [syncStartPage, setSyncStartPage] = useState(1);
-  const [syncEndPage, setSyncEndPage] = useState(20);
+  const [streamtapeSearch, setStreamtapeSearch] = useState('');
 
-  const fetchBackendPosts = async () => {
-    setLoadingBackend(true);
+  // Pagination for posts
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 24;
+
+  // Modals
+  const [modal, setModal] = useState<{
+    type: 'post' | 'channel' | 'actor' | 'category' | 'bulk-category' | 'bulk-post-assign' | 'bulk-streamtape' | 'bulk-channel' | 'bulk-actor';
+    mode: 'add' | 'edit';
+    data?: any;
+  } | null>(null);
+
+  // Form State
+  const [form, setForm] = useState<Record<string, any>>({});
+  const [formCategories, setFormCategories] = useState<string[]>([]);
+  const [formActors, setFormActors] = useState<string[]>([]);
+
+  // AI Description Generator State
+  const [descOptions, setDescOptions] = useState<DescriptionOption[] | null>(null);
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
+
+  // Explicit Streamtape Cloud Fetching State
+  const [fetchingStreamtape, setFetchingStreamtape] = useState(false);
+
+  // Actor Crop interactive tool state
+  const [cropX, setCropX] = useState(50);
+  const [cropY, setCropY] = useState(50);
+  const [cropZoom, setCropZoom] = useState(1);
+
+  // ── Data Fetching (Direct from Supabase) ──────────────────────────────────
+  const fetchAllData = async (isSilent = false) => {
+    if (!isSilent) setRefreshing(true);
     try {
-      const j = await fetchAdminPosts();
-      
-      if (j.success && j.data) {
-        // DIAGNOSTIC: Log EXACT data received from API
-        console.log('=== ADMIN POSTS RECEIVED FROM API ===');
-        console.log(`Total posts: ${j.data.length}`);
-        j.data.slice(0, 5).forEach((post: any, index: number) => {
-          console.log(`Post ${index + 1}: "${post.title}"`);
-          console.log(`  - channelId: ${post.channelId || 'NULL'}`);
-          console.log(`  - channelName: ${post.channelName || 'NULL'}`);
-        });
-        console.log('=======================================');
-        
-        // Clean titles on load - remove ALL video extensions
-        const cleaned = j.data.map((post: Post) => ({
-          ...post,
-          title: (post.title || '')
-            .replace(/\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|mpeg|mpg|ts|mts|m2ts|vob|ogv|rm|rmvb|asf|amv|divx|xvid|f4v|h264|h265|hevc|mxf|dv|qt|yuv|m2v|svi|nsv|roq|nut)\s*$/i, '')
-            .replace(/\s+(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|mpeg|mpg|ts|mts|m2ts|vob|ogv|rm|rmvb|asf|amv|divx|xvid|f4v|h264|h265|hevc|mxf|dv|qt|yuv|m2v|svi|nsv|roq|nut)\s*$/i, '')
-            .trim()
-        }));
-        setBackendPosts(cleaned);
-        toast.success(`Loaded ${cleaned.length} posts`);
-      } else {
-        toast.error('Failed to load posts: No data returned');
-        setBackendPosts([]);
+      const [pRes, cRes, aRes, catRes, psRes] = await Promise.allSettled([
+        fetchAdminPosts(),
+        fetchChannels(),
+        fetchActors(),
+        fetchCategories(),
+        fetchAdminPlayerSettings()
+      ]);
+
+      if (pRes.status === 'fulfilled' && pRes.value.success) {
+        setPosts(pRes.value.data || []);
+      }
+      if (cRes.status === 'fulfilled' && cRes.value.success) {
+        setChannels(cRes.value.data || []);
+      }
+      if (aRes.status === 'fulfilled' && aRes.value.success) {
+        setActors(aRes.value.data || []);
+      }
+      if (catRes.status === 'fulfilled' && catRes.value.success) {
+        setCategories(catRes.value.data || []);
+      }
+      if (psRes.status === 'fulfilled' && psRes.value.success && psRes.value.data) {
+        setPlayerSettings(psRes.value.data);
       }
     } catch (err) {
-      console.error('Failed to fetch posts:', err);
-      toast.error('Failed to load posts from backend');
-      setBackendPosts([]);
+      console.error('Error fetching admin data:', err);
+      toast.error('Failed to load some dashboard data');
     } finally {
-      setLoadingBackend(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const refreshAll = () => {
-    fetchBackendPosts();
-    fetchChannels().then(r => { if (r.success) setChs(r.data); }).catch(() => {});
-    fetchActors().then(r => { if (r.success) setActs(r.data); }).catch(() => {});
-  };
-
-  // Load player settings
-  useEffect(() => {
-    if (tab === 'player-settings') {
-      fetchAdminPlayerSettings()
-        .then(response => {
-          if (response.success) {
-            setPlayerSettings(response.data);
-          }
-        })
-        .catch(err => {
-          console.error('Failed to load player settings:', err);
-          toast.error('Failed to load player settings');
-        });
+  const handleFetchStreamtape = async () => {
+    setFetchingStreamtape(true);
+    try {
+      const res = await fetchStreamtapeVideos();
+      if (res.success) {
+        setStreamtapeVideos(res.data || []);
+        toast.success(`Fetched ${res.data?.length || 0} un-imported videos from Streamtape Cloud! ☁️`);
+      } else {
+        toast.error(res.message || 'Failed to fetch Streamtape videos');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error fetching Streamtape videos');
+    } finally {
+      setFetchingStreamtape(false);
     }
-  }, [tab]);
+  };
 
-  // Load categories from backend — load on mount AND when categories tab is active
-  const loadCategories = () => {
-    fetchCategories()
-      .then(response => {
-        if (response.success) {
-          setCats(response.data);
-        }
-      })
-      .catch(err => {
-        console.error('Failed to load categories:', err);
-      });
+  const [optimizingDB, setOptimizingDB] = useState(false);
+  const [optimizationResult, setOptimizationResult] = useState<any>(null);
+
+  const handleOptimizeDatabase = async () => {
+    setOptimizingDB(true);
+    try {
+      const res = await optimizeDatabaseStorage();
+      if (res.success) {
+        setOptimizationResult(res.stats);
+        toast.success(res.message || 'Database storage optimized to minimal bytes!');
+        fetchAllData(true);
+      } else {
+        toast.error(res.message || 'Optimization failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error running database optimization');
+    } finally {
+      setOptimizingDB(false);
+    }
   };
 
   useEffect(() => {
-    loadCategories(); // load on mount so category search works in post edit modal
+    fetchAllData();
   }, []);
 
-  useEffect(() => {
-    if (tab === 'categories') {
-      loadCategories();
-    }
-  }, [tab]);
-
-  const handleSavePlayerSettings = async () => {
-    try {
-      await updatePlayerSettings(playerSettings.autoPlay, playerSettings.defaultServer);
-      toast.success('Player settings updated successfully!');
-    } catch (err: any) {
-      console.error('Failed to update player settings:', err);
-      toast.error(err.message || 'Failed to update player settings');
-    }
+  const refreshAll = () => {
+    fetchAllData();
+    queryClient.invalidateQueries();
   };
 
-  useEffect(() => { refreshAll(); }, []);
-  
-  // Reset to page 1 when post search changes (MOVED TO TOP - React hooks rule)
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [postSearch]);
-  
-  // Check authorization on mount and when user changes — redirect to /meow if not admin
-  useEffect(() => { 
-    if (!user?.isAdmin) {
-      navigate('/meow', { replace: true }); 
-    }
-  }, [user, navigate]);
-  
-  // Preload data when switching tabs to prevent blank screens
-  useEffect(() => {
-    // Set loading state for the tab
-    setTabLoading(prev => ({ ...prev, [tab]: true }));
-    
-    // Safety timeout: force clear loading after 5 seconds max
-    const safetyTimeout = setTimeout(() => {
-      console.warn('Safety timeout: Force clearing loading state for tab:', tab);
-      setTabLoading(prev => ({ ...prev, [tab]: false }));
-    }, 5000);
-    
-    const loadData = async () => {
-      try {
-        // Always clear loading state, even if no data needs to be loaded
-        if (tab === 'posts') {
-          // If posts not loaded yet, fetch them
-          if (backendPosts.length === 0) {
-            await fetchBackendPosts();
-          }
-        } else if (tab === 'channels') {
-          if (chs.length === 0) {
-            const r = await fetchChannels();
-            if (r.success) setChs(r.data);
-          }
-        } else if (tab === 'actors') {
-          if (acts.length === 0) {
-            const r = await fetchActors();
-            if (r.success) setActs(r.data);
-          }
-        } else if (tab === 'categories') {
-          if (cats.length === 0) {
-            const r = await fetchCategories();
-            if (r.success) setCats(r.data);
-          }
-        } else if (tab === 'support') {
-          const r = await fetchSupportRequests();
-          if (r.success) setSupportRequests(r.data);
-        }
-      } catch (error) {
-        console.error(`Error loading data for tab ${tab}:`, error);
-        toast.error('Failed to load data');
-      } finally {
-        // ALWAYS clear loading state, even if no data was fetched
-        clearTimeout(safetyTimeout);
-        setTabLoading(prev => ({ ...prev, [tab]: false }));
-      }
-    };
-    
-    loadData();
-    
-    // Cleanup timeout on unmount
-    return () => clearTimeout(safetyTimeout);
-  }, [tab]);
-  
-  // Show loading while checking auth - NEVER return null (causes black screen!)
-  if (!user?.isAdmin) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Checking authorization...</p>
-        </div>
-      </div>
+  // ── Logout ────────────────────────────────────────────────────────────────
+  const handleLogout = async () => {
+    await adminLogout();
+    signOut();
+    toast.success('Signed out successfully');
+    navigate('/admingate');
+  };
+
+  // ── Filtering Logic ───────────────────────────────────────────────────────
+  const filteredPosts = useMemo(() => {
+    return posts.filter(p => {
+      const matchesSearch = !postSearch.trim() || 
+        p.title.toLowerCase().includes(postSearch.toLowerCase()) ||
+        (p.channelName && p.channelName.toLowerCase().includes(postSearch.toLowerCase()));
+      const matchesChannel = postChannelFilter === 'all' || p.channelName === postChannelFilter;
+      const matchesCategory = postCategoryFilter === 'all' || 
+        (p.categories && p.categories.includes(postCategoryFilter)) || 
+        (p.category && p.category === postCategoryFilter);
+      return matchesSearch && matchesChannel && matchesCategory;
+    });
+  }, [posts, postSearch, postChannelFilter, postCategoryFilter]);
+
+  const paginatedPosts = useMemo(() => {
+    const start = (page - 1) * PER_PAGE;
+    return filteredPosts.slice(start, start + PER_PAGE);
+  }, [filteredPosts, page]);
+
+  const totalPages = Math.ceil(filteredPosts.length / PER_PAGE) || 1;
+
+  const filteredChannels = useMemo(() => {
+    return channels.filter(c => 
+      !channelSearch.trim() || 
+      c.name.toLowerCase().includes(channelSearch.toLowerCase()) ||
+      (c.handle && c.handle.toLowerCase().includes(channelSearch.toLowerCase()))
     );
-  }
+  }, [channels, channelSearch]);
 
-  const sidebarItems: { id: AdminTab; icon: typeof BarChart3; label: string }[] = [
-    { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
-    { id: 'posts', icon: Film, label: 'Posts' },
-    { id: 'channels', icon: Tv, label: 'Channels' },
-    { id: 'actors', icon: Users, label: 'Actors' },
-    { id: 'categories', icon: Tag, label: 'Categories' },
-    { id: 'player-settings', icon: Settings, label: 'Player Settings' },
-    { id: 'settings', icon: Settings, label: 'Settings' },
-    { id: 'support', icon: MessageSquare, label: 'Support Messages' },
-  ];
+  const filteredActors = useMemo(() => {
+    return actors.filter(a => 
+      !actorSearch.trim() || 
+      a.name.toLowerCase().includes(actorSearch.toLowerCase())
+    );
+  }, [actors, actorSearch]);
 
-  const stats = [
-    { label: 'Total Videos', value: backendPosts.length, icon: Film, color: 'text-accent' },
-    { label: 'Total Channels', value: chs.length, icon: Tv, color: 'text-primary' },
-    { label: 'Total Actors', value: acts.length, icon: Users, color: 'text-accent' },
-    { label: 'Total Categories', value: cats.filter(c => c.id !== 'all').length, icon: Tag, color: 'text-primary' },
-  ];
+  const filteredCategories = useMemo(() => {
+    return categories.filter(c => 
+      !categorySearch.trim() || 
+      c.name.toLowerCase().includes(categorySearch.toLowerCase())
+    );
+  }, [categories, categorySearch]);
 
-  // Map platform to embed URL - Seekstreaming only
-  const toEmbedUrl = (platform: string, videoId: string) => {
-    if (platform === 'seekstreaming') return `${form.seekstreaming_player_domain || 'https://xonstream.seeks.cloud'}/#${videoId}`;
-    return '';
+  const filteredStreamtape = useMemo(() => {
+    return streamtapeVideos.filter(v => 
+      !streamtapeSearch.trim() || 
+      v.title.toLowerCase().includes(streamtapeSearch.toLowerCase()) ||
+      v.name.toLowerCase().includes(streamtapeSearch.toLowerCase())
+    );
+  }, [streamtapeVideos, streamtapeSearch]);
+
+  // ── Single Operations ─────────────────────────────────────────────────────
+
+  // Post Actions
+  const handleOpenAddPost = () => {
+    setForm({
+      title: '',
+      videoId: '',
+      description: '',
+      thumbnail: '',
+      channelId: channels[0]?.id || '',
+      channelName: channels[0]?.name || ''
+    });
+    setFormCategories([]);
+    setFormActors([]);
+    setDescOptions(null);
+    setModal({ type: 'post', mode: 'add' });
   };
-  const parseEmbedUrl = (url: string): { platform: string; videoId: string } | null => {
-    if (!url) return null;
-    if (url.includes('xonstream.seeks.cloud/#') || (url.includes('seeks.cloud/#'))) return { platform: 'seekstreaming', videoId: url.split('#')[1]?.split('&')[0] };
-    return null;
+
+  const handleOpenEditPost = (p: Post) => {
+    const primaryVideoId = p.videoSources?.[0]?.videoId || '';
+    const ch = channels.find(c => c.name === p.channelName);
+    
+    // Find matching category IDs
+    const matchedCatIds = categories
+      .filter(c => (p.categories || []).includes(c.name) || p.category === c.name)
+      .map(c => c.id);
+
+    const rawDesc = p.description || '';
+    const cleanDesc = (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(rawDesc.trim())) ? '' : rawDesc;
+
+    setForm({
+      id: p.id,
+      title: p.title,
+      description: cleanDesc,
+      thumbnail: p.thumbnail || '',
+      videoId: primaryVideoId,
+      channelId: ch?.id || (p as any).channelId || '',
+      channelName: p.channelName || ''
+    });
+    setFormCategories(matchedCatIds);
+    setFormActors(p.actors || []);
+    setDescOptions(null);
+    setModal({ type: 'post', mode: 'edit', data: p });
   };
 
-  const openAdd = (type: 'post' | 'channel' | 'actor' | 'category') => { 
-    setForm({}); 
-    if (type === 'post') {
-      setFormActors([]);
-      setFormCategories([]);
+  const handleGenerateDescription = () => {
+    if (!form.title?.trim()) {
+      toast.error('Please enter a video title first');
+      return;
     }
-    setModal({ type, mode: 'add' }); 
-  };
-  const openEdit = (type: 'post' | 'channel' | 'actor' | 'category', data: Post | Channel | Actor | Category) => {
-    if (type === 'post') {
-      const postData = data as Post;
-      const cleanTitle = (postData.title || '').replace(/\.(mp4|mkv|avi|mov|wmv)$/i, '').trim();
-      
-      // Ensure categories are fresh when opening post edit modal
-      loadCategories();
-      
-      const seekSrc = postData.videoSources?.find((s: any) => s.platform === 'seekstreaming');
-      
-      setForm({
-        title: cleanTitle,
-        thumbnail: postData.thumbnail || '',
-        description: postData.description || '',
-        channelName: postData.channelName || '',
-        vid_seekstreaming: seekSrc?.videoId || '',
-        vid_streamtape: postData.videoSources?.find((s: any) => s.platform === 'streamtape')?.videoId || '',
+    setIsGeneratingDesc(true);
+    setTimeout(() => {
+      const matchedCatNames = categories
+        .filter(c => formCategories.includes(c.id))
+        .map(c => c.name);
+      const options = generateDescriptionOptions({
+        title: form.title,
+        channelName: form.channelName,
+        actors: formActors,
+        categories: matchedCatNames,
       });
-      setFormActors(postData.actors || []);
-      setFormCategories(postData.categories || []);
-    } else {
-      setForm({ ...data } as Record<string, string>);
-    }
-    setModal({ type, mode: 'edit', data });
+      setDescOptions(options);
+      setIsGeneratingDesc(false);
+      toast.success('Generated 4 thoughtful description options! ✨');
+    }, 250);
+  };
+
+  const handleApplyDescription = (text: string) => {
+    setForm(prev => ({ ...prev, description: text }));
+    setDescOptions(null);
+    toast.success('Description applied to post! ✨');
   };
 
   const handleSavePost = async () => {
-    // Build videoSources - Seekstreaming AND Streamtape
-    const seekId = (form.vid_seekstreaming || '').trim();
-    const streamtapeId = (form.vid_streamtape || '').trim();
-    const updatedSources: VideoSourceInput[] = [];
-    
-    if (seekId) {
-      updatedSources.push({ platform: 'seekstreaming', videoId: seekId });
-    }
-    if (streamtapeId) {
-      updatedSources.push({ platform: 'streamtape', videoId: streamtapeId });
-    }
-
-    // Clean title - remove file extensions
-    const cleanTitle = (form.title || '').replace(/\.(mp4|mkv|avi|mov|wmv)$/i, '').trim();
-
-    // Find channel ID from name
-    const channelId = chs.find(c => c.name === form.channelName)?.id || '';
-    
-    // Find category IDs from names  
-    const categoryIds = formCategories.map(catName => cats.find(c => c.name === catName)?.id).filter(Boolean) as string[];
-
-    const isEdit = modal?.mode === 'edit';
-    const postId = modal?.data?.id;
-    
-    if (isEdit && !postId) {
-      console.error('CRITICAL: Edit mode but no post ID!');
-      toast.error('Error: No post ID found. Please refresh and try again.');
+    if (!form.title?.trim()) {
+      toast.error('Title is required');
       return;
     }
-    
-    const payload = {
-      title: cleanTitle,
-      thumbnail: form.thumbnail || '',
-      description: form.description || '',
-      channelId: channelId,
-      categoryIds: categoryIds,
-      actors: formActors,
-      videoSources: updatedSources,
-    };
-    
-    setIsSaving(true);
+    setActionLoading(prev => ({ ...prev, savePost: true }));
     try {
-      const resp = await fetch(`${API_BASE}/api/admin/posts${isEdit ? `/${postId}` : ''}`, {
-        method: isEdit ? 'PUT' : 'POST',
-        credentials: 'include',
-        headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(payload),
-      });
-      
-      const json = await resp.json();
-      
-      if (json.success) {
-        // DIAGNOSTIC: Log what was saved
-        console.log('=== POST SAVE SUCCESSFUL ===');
-        console.log(`Post ID: ${postId || 'NEW'}`);
-        console.log(`Channel ID sent: ${channelId || 'NULL'}`);
-        console.log(`Channel Name sent: ${form.channelName || 'NULL'}`);
-        console.log('Response:', json);
-        console.log('=============================');
-        
-        toast.success(modal?.mode === 'edit' ? '✓ Post updated successfully!' : '✓ Post added successfully!');
-        fetchBackendPosts();
-        setModal(null);
-      } else {
-        toast.error(json.message || json.error || 'Save failed');
-      }
-    } catch (error) {
-      console.error('Exception during save:', error);
-      toast.error(`Could not reach backend: ${error.message || 'Unknown error'}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeletePost = async (id: string) => {
-    if (!window.confirm('Delete this post?')) return;
-    try {
-      const resp = await fetch(`${API_BASE}/api/admin/posts/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
-      const json = await resp.json();
-      if (json.success) { toast.success('Post deleted ✓'); fetchBackendPosts(); }
-      else toast.error(json.message || 'Delete failed');
-    } catch { toast.error('Could not reach backend'); }
-  };
-
-  const handleDeleteAllPosts = async () => {
-    if (!window.confirm('WARNING: This will delete ALL posts from the database! This action cannot be undone. Continue?')) return;
-    setLoadingBackend(true);
-    try {
-      const result = await deleteAllPosts();
-      if (result.success) {
-        toast.success(`Deleted all posts ✓`);
-        setBackendPosts([]);
-        setSelectedIds(new Set());
-      } else {
-        toast.error(result.message || 'Delete failed');
-      }
-    } catch (error) {
-      console.error('Delete all error:', error);
-      toast.error('Could not reach backend - check console for details');
-    } finally {
-      setLoadingBackend(false);
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected posts?`)) return;
-    try {
-      const idsArray = Array.from(selectedIds);
-      const resp = await fetch(`${API_BASE}/api/admin/posts`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ ids: idsArray }),
-      });
-      const json = await resp.json();
-      if (json.success) {
-        toast.success(`Deleted ${selectedIds.size} posts ✓`);
-        setBackendPosts(backendPosts.filter(p => !selectedIds.has(p.id)));
-        setSelectedIds(new Set());
-      } else {
-        toast.error(json.error || 'Delete failed');
-      }
-    } catch { toast.error('Could not reach backend'); }
-  };
-
-  const handleBulkUpdate = async () => {
-    if (selectedIds.size === 0) {
-      toast.error('No posts selected');
-      return;
-    }
-    
-    // Find channel ID from name
-    let channelId: string | null = null;
-    if (bulkAction === 'channel' && bulkChannel) {
-      const foundChannel = chs.find(c => c.name === bulkChannel);
-      channelId = foundChannel?.id || null;
-      if (!channelId) {
-        toast.error('Channel not found in database');
-        return;
-      }
-    }
-    
-    // Find category IDs from names
-    let categoryIds: string[] = [];
-    if (bulkAction === 'category' && bulkCategories.length > 0) {
-      categoryIds = bulkCategories.map(catName => {
-        const foundCat = cats.find(c => c.name === catName);
-        return foundCat?.id || null;
-      }).filter(id => id !== null) as string[];
-      
-      if (categoryIds.length === 0) {
-        toast.error('Categories not found in database');
-        return;
-      }
-    }
-    
-    setIsBulkSaving(true);
-    try {
-      // Use the bulk-edit endpoint instead of individual updates
-      const bulkPayload: any = {
-        postIds: Array.from(selectedIds),
+      const postPayload: any = {
+        title: form.title.trim(),
+        description: form.description || '',
+        thumbnail: form.thumbnail || '',
+        categoryIds: formCategories,
+        actorNames: formActors,
+        actors: formActors,
+        channelId: form.channelId || null
       };
-      
-      if (bulkAction === 'channel' && channelId) {
-        bulkPayload.setChannel = channelId;
+
+      if (form.channelName && !form.channelId) {
+        const found = channels.find(c => c.name.toLowerCase() === form.channelName.toLowerCase());
+        if (found) postPayload.channelId = found.id;
+        else postPayload.channelName = form.channelName;
       }
-      
-      if (bulkAction === 'category' && categoryIds.length > 0) {
-        // Send ALL category IDs, not just the first one
-        bulkPayload.setCategories = categoryIds;
+
+      if (form.videoId) {
+        postPayload.videoId = form.videoId.trim();
+        postPayload.videoSources = [{
+          platform: 'streamtape',
+          videoId: form.videoId.trim()
+        }];
       }
-      
-      if (bulkAction === 'actors' && bulkActors.length > 0) {
-        bulkPayload.addActors = bulkActors;
+
+      if (modal?.mode === 'edit' && form.id) {
+        postPayload.id = form.id;
       }
-      
-      const resp = await fetch(`${API_BASE}/api/admin/posts/bulk-edit`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: adminAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(bulkPayload),
-      });
-      
-      const json = await resp.json();
-      
-      if (json.success) {
-        const { updatedCount, errorCount, errors } = json.data || {};
-        
-        if (updatedCount > 0) {
-          toast.success(`✓ Updated ${updatedCount} posts${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
-          fetchBackendPosts();
-          setSelectedIds(new Set());
-          setModal(null);
-        } else {
-          toast.error('No posts were updated');
-        }
+
+      const res = await savePost(postPayload);
+      if (res.success) {
+        toast.success(modal?.mode === 'edit' ? 'Post updated in Supabase ✓' : 'Post created in Supabase ✓');
+        setModal(null);
+        refreshAll();
       } else {
-        toast.error(json.message || 'Failed to update posts');
+        toast.error(res.message || 'Failed to save post');
       }
-    } catch (err) {
-      console.error('Bulk update error:', err);
-      toast.error(`Could not reach backend: ${err.message || 'Unknown error'}`);
-    } finally { 
-      setIsBulkSaving(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Error saving post');
+    } finally {
+      setActionLoading(prev => ({ ...prev, savePost: false }));
     }
   };
 
-  const handleCleanAllTitles = async () => {
-
-    if (!window.confirm(`This will permanently remove .mp4, .mkv, .avi, .mov, .wmv from ALL post titles. Continue?`)) return;
-    
-    setLoadingBackend(true);
-    
+  const handleDeletePost = async (id: string, title: string) => {
+    if (!window.confirm(`Delete post "${title}"?`)) return;
     try {
-      // Call backend endpoint to clean titles
-      const response = await fetch(`${API_BASE}/api/admin/posts/clean-titles`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: adminAuthHeaders(),
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        toast.success(result.message, {
-          description: `${result.updated} updated, ${result.skipped} already clean`,
-        });
-        fetchBackendPosts(); // Refresh display with clean data
+      const res = await deletePost(id);
+      if (res.success) {
+        toast.success('Post deleted from Supabase ✓');
+        setPosts(prev => prev.filter(p => p.id !== id));
+        setSelectedPosts(prev => prev.filter(pId => pId !== id));
+        refreshAll();
       } else {
-        toast.error(result.error || 'Title cleaning failed');
+        toast.error(res.message || 'Failed to delete post');
       }
-      
-    } catch (error) {
-      console.error('Error cleaning titles:', error);
-      toast.error('Failed to clean titles');
-    } finally {
-      setLoadingBackend(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Error deleting post');
     }
+  };
+
+  // Channel Actions
+  const handleOpenAddChannel = () => {
+    setForm({ name: '', handle: '', logo: '', banner: '', description: '', verified: true });
+    setModal({ type: 'channel', mode: 'add' });
+  };
+
+  const handleOpenEditChannel = (ch: Channel) => {
+    setForm({
+      id: ch.id,
+      name: ch.name,
+      handle: ch.handle || '',
+      logo: ch.logo || '',
+      banner: ch.banner || '',
+      description: ch.description || '',
+      verified: ch.verified ?? true
+    });
+    setModal({ type: 'channel', mode: 'edit', data: ch });
   };
 
   const handleSaveChannel = async () => {
-    const existingChannel = modal?.data as Channel;
-    const ch: Channel = modal?.mode === 'edit'
-      ? { ...existingChannel, name: form.name || existingChannel.name, handle: form.handle || existingChannel.handle, logo: form.logo || existingChannel.logo, banner: form.banner || existingChannel.banner, description: form.description || existingChannel.description }
-      : { id: `ch-${Date.now()}`, name: form.name || '', handle: form.handle || '', logo: form.logo || '', banner: form.banner || '', description: form.description || '', subscribers: 0, totalVideos: 0, verified: false };
+    if (!form.name?.trim()) {
+      toast.error('Channel name is required');
+      return;
+    }
+    setActionLoading(prev => ({ ...prev, saveChannel: true }));
     try {
-      const r = await saveChannel(ch);
-      if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Channel updated ✓' : 'Channel added ✓');
-        fetchChannels().then(res => { if (res.success) setChs(res.data); }).catch(() => {});
+      const res = await saveChannel(form as Channel);
+      if (res.success) {
+        toast.success(modal?.mode === 'edit' ? 'Channel updated in Supabase ✓' : 'Channel created in Supabase ✓');
         setModal(null);
-      } else toast.error('Save failed');
-    } catch { toast.error('Could not reach backend'); }
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Failed to save channel');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error saving channel');
+    } finally {
+      setActionLoading(prev => ({ ...prev, saveChannel: false }));
+    }
   };
 
-  const handleDeleteChannel = async (id: string) => {
-    if (!window.confirm('Delete this channel?')) return;
+  const handleDeleteChannel = async (id: string, name: string) => {
+    if (!window.confirm(`Delete channel "${name}"? Posts linked to this channel will be uncategorized.`)) return;
     try {
-      const r = await deleteChannel(id);
-      if (r.success) {
-        toast.success('Channel deleted ✓');
-        fetchChannels().then(res => { if (res.success) setChs(res.data); }).catch(() => {});
-      } else toast.error('Delete failed');
-    } catch { toast.error('Could not reach backend'); }
+      const res = await deleteChannel(id);
+      if (res.success) {
+        toast.success('Channel deleted from Supabase ✓');
+        setChannels(prev => prev.filter(c => c.id !== id));
+        setSelectedChannels(prev => prev.filter(cId => cId !== id));
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Failed to delete channel');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error deleting channel');
+    }
+  };
+
+  // Actor Actions
+  const handleOpenAddActor = () => {
+    setForm({ name: '', image: '', bio: '' });
+    setCropX(50);
+    setCropY(50);
+    setCropZoom(1);
+    setModal({ type: 'actor', mode: 'add' });
+  };
+
+  const handleOpenEditActor = (actor: Actor) => {
+    setForm({
+      id: actor.id,
+      name: actor.name,
+      image: actor.image || '',
+      bio: (actor as any).bio || ''
+    });
+    setCropX(actor.cropX ?? 50);
+    setCropY(actor.cropY ?? 50);
+    setCropZoom(actor.cropZoom ?? 1);
+    setModal({ type: 'actor', mode: 'edit', data: actor });
   };
 
   const handleSaveActor = async () => {
-    const existingActor = modal?.data as Actor;
-    const actor: Actor = modal?.mode === 'edit'
-      ? {
-          ...existingActor,
-          name: form.name || existingActor.name,
-          image: form.image || existingActor.image,
-          cropX:    form.cropX    !== undefined ? Number(form.cropX)    : existingActor.cropX,
-          cropY:    form.cropY    !== undefined ? Number(form.cropY)    : existingActor.cropY,
-          cropZoom: form.cropZoom !== undefined ? Number(form.cropZoom) : existingActor.cropZoom,
-        }
-      : { id: `actor-${Date.now()}`, name: form.name || '', image: form.image || '', totalVideos: 0,
-          cropX: Number(form.cropX ?? 50), cropY: Number(form.cropY ?? 50), cropZoom: Number(form.cropZoom ?? 1) };
-    try {
-      const r = await saveActor(actor);
-      if (r.success) {
-        toast.success(modal?.mode === 'edit' ? 'Actor updated ✓' : 'Actor added ✓');
-        // Refresh local admin state
-        fetchActors().then(res => { if (res.success) setActs(res.data); }).catch(() => {});
-        // Invalidate React Query cache so ActorsPage/ActorPage/SearchPage immediately show updated crop
-        queryClient.invalidateQueries({ queryKey: ['actors'] });
-        setModal(null);
-      } else toast.error('Save failed');
-    } catch { toast.error('Could not reach backend'); }
-  };
-
-  const handleDeleteActor = async (id: string) => {
-    if (!window.confirm('Delete this actor?')) return;
-    try {
-      const r = await deleteActor(id);
-      if (r.success) {
-        toast.success('Actor deleted ✓');
-        fetchActors().then(res => { if (res.success) setActs(res.data); }).catch(() => {});
-      } else toast.error('Delete failed');
-    } catch { toast.error('Could not reach backend'); }
-  };
-
-
-  const handleSaveCategory = async () => {
-    const categoryData = {
-      id: modal?.mode === 'edit' ? (modal.data as Category).id : `cat-${Date.now()}`,
-      name: form.name || '',
-      icon: form.icon || '📁'
-    };
-    
-    try {
-      await saveCategory(categoryData);
-      toast.success(modal?.mode === 'edit' ? 'Category updated' : 'Category added');
-      setModal(null);
-      // Refresh categories list
-      const response = await fetchCategories();
-      if (response.success) setCats(response.data);
-    } catch (err: any) {
-      console.error('Failed to save category:', err);
-      toast.error(err.message || 'Failed to save category');
+    if (!form.name?.trim()) {
+      toast.error('Actor name is required');
+      return;
     }
-  };
-
-  const handleDeleteCategory = async (id: string) => {
-    if (!window.confirm('Delete this category?')) return;
+    setActionLoading(prev => ({ ...prev, saveActor: true }));
     try {
-      await deleteCategory(id);
-      toast.success('Category deleted');
-      // Refresh categories list
-      const response = await fetchCategories();
-      if (response.success) setCats(response.data);
-    } catch (err: any) {
-      console.error('Failed to delete category:', err);
-      toast.error(err.message || 'Failed to delete category');
-    }
-  };
-
-  const handleDeleteSupport = async (key: string) => {
-    if (!window.confirm('Are you sure you want to delete this support message?')) return;
-    try {
-      const res = await deleteSupportRequest(key);
+      const payload: any = {
+        id: form.id || undefined,
+        name: form.name.trim(),
+        image: form.image || '',
+        bio: form.bio || ''
+      };
+      const res = await saveActor(payload as Actor);
       if (res.success) {
-        toast.success('Support message deleted successfully ✓');
-        setSupportRequests(prev => prev.filter(req => req.key !== key));
+        toast.success(modal?.mode === 'edit' ? 'Actor updated in Supabase ✓' : 'Actor created in Supabase ✓');
+        const savedData = res.data || payload;
+        if (modal?.mode === 'edit' && form.id) {
+          setActors(prev => prev.map(a => a.id === form.id ? { ...a, ...savedData } : a));
+        } else if (res.data) {
+          setActors(prev => [res.data, ...prev]);
+        }
+        setModal(null);
+        refreshAll();
       } else {
-        toast.error(res.message || 'Failed to delete message.');
+        toast.error(res.message || 'Failed to save actor');
       }
     } catch (err: any) {
-      console.error('Delete message error:', err);
-      toast.error(err.message || 'Failed to delete message.');
+      toast.error(err.message || 'Error saving actor');
+    } finally {
+      setActionLoading(prev => ({ ...prev, saveActor: false }));
     }
   };
 
-  const handleSaveSettings = () => { saveSettings(settings); toast.success('Settings saved'); };
-  const selectTab = (t: AdminTab) => { 
-    setTab(t); 
-    setSidebarOpen(false);
-    // Update URL query parameter so refresh preserves the tab
-    const params = new URLSearchParams(window.location.search);
-    params.set('tab', t);
-    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+  const handleDeleteActor = async (id: string, name: string) => {
+    if (!window.confirm(`Delete actor "${name}"?`)) return;
+    try {
+      const res = await deleteActor(id);
+      if (res.success) {
+        toast.success('Actor deleted from Supabase ✓');
+        setActors(prev => prev.filter(a => a.id !== id));
+        setSelectedActors(prev => prev.filter(aId => aId !== id));
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Failed to delete actor');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error deleting actor');
+    }
   };
 
-  const SidebarContent = (
-    <nav className="py-2 flex-1">
-      {sidebarItems.map(item => (
-        <button key={item.id} onClick={() => selectTab(item.id)}
-          className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-colors ${
-            tab === item.id ? 'bg-secondary text-foreground font-medium' : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
-          }`}>
-          <item.icon className="w-5 h-5" />
-          <span className="text-sm">{item.label}</span>
-        </button>
-      ))}
-    </nav>
-  );
+  // Category Actions
+  const handleOpenAddCategory = () => {
+    setForm({ name: '', icon: '' });
+    setModal({ type: 'category', mode: 'add' });
+  };
+
+  const handleOpenEditCategory = (cat: Category) => {
+    setForm({ id: cat.id, name: cat.name, icon: cat.icon || '' });
+    setModal({ type: 'category', mode: 'edit', data: cat });
+  };
+
+  const handleSaveCategory = async () => {
+    if (!form.name?.trim()) {
+      toast.error('Category name is required');
+      return;
+    }
+    setActionLoading(prev => ({ ...prev, saveCategory: true }));
+    try {
+      const res = await saveCategory(form as Category);
+      if (res.success) {
+        toast.success(modal?.mode === 'edit' ? 'Category updated in Supabase ✓' : 'Category created in Supabase ✓');
+        setModal(null);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Failed to save category');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error saving category');
+    } finally {
+      setActionLoading(prev => ({ ...prev, saveCategory: false }));
+    }
+  };
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!window.confirm(`Delete category "${name}"?`)) return;
+    try {
+      const res = await deleteCategory(id);
+      if (res.success) {
+        toast.success('Category deleted from Supabase ✓');
+        setCategories(prev => prev.filter(c => c.id !== id));
+        setSelectedCategories(prev => prev.filter(cId => cId !== id));
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Failed to delete category');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error deleting category');
+    }
+  };
+
+  // ── Bulk Operations ───────────────────────────────────────────────────────
+
+  // Bulk Delete Posts
+  const handleBulkDeletePosts = async () => {
+    if (selectedPosts.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedPosts.length} selected post(s) from Supabase?`)) return;
+
+    setActionLoading(prev => ({ ...prev, bulkDeletePosts: true }));
+    try {
+      const res = await bulkDeletePosts(selectedPosts);
+      if (res.success) {
+        toast.success(`Deleted ${selectedPosts.length} posts from Supabase ✓`);
+        setSelectedPosts([]);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk delete failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error in bulk delete');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkDeletePosts: false }));
+    }
+  };
+
+  // Bulk Edit / Assign Posts
+  const handleBulkAssignPosts = async () => {
+    if (selectedPosts.length === 0) return;
+    setActionLoading(prev => ({ ...prev, bulkAssign: true }));
+    try {
+      const payload: any = { postIds: selectedPosts };
+      if (form.bulkChannelId) payload.setChannel = form.bulkChannelId;
+      if (formCategories.length > 0) payload.setCategories = formCategories;
+
+      const res = await bulkEditPosts(payload);
+      if (res.success) {
+        toast.success(`Updated ${selectedPosts.length} posts in Supabase ✓`);
+        setModal(null);
+        setSelectedPosts([]);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk update failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error updating posts');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkAssign: false }));
+    }
+  };
+
+  // Bulk Delete Channels
+  const handleBulkDeleteChannels = async () => {
+    if (selectedChannels.length === 0) return;
+    if (!window.confirm(`Delete ${selectedChannels.length} selected channels from Supabase?`)) return;
+
+    setActionLoading(prev => ({ ...prev, bulkDeleteChannels: true }));
+    try {
+      const res = await bulkDeleteChannels(selectedChannels);
+      if (res.success) {
+        toast.success(`Deleted ${selectedChannels.length} channels from Supabase ✓`);
+        setSelectedChannels([]);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk delete failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error in bulk delete');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkDeleteChannels: false }));
+    }
+  };
+
+  // Bulk Delete Actors
+  const handleBulkDeleteActors = async () => {
+    if (selectedActors.length === 0) return;
+    if (!window.confirm(`Delete ${selectedActors.length} selected actors from Supabase?`)) return;
+
+    setActionLoading(prev => ({ ...prev, bulkDeleteActors: true }));
+    try {
+      const res = await bulkDeleteActors(selectedActors);
+      if (res.success) {
+        toast.success(`Deleted ${selectedActors.length} actors from Supabase ✓`);
+        setSelectedActors([]);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk delete failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error in bulk delete');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkDeleteActors: false }));
+    }
+  };
+
+  // Bulk Delete Categories
+  const handleBulkDeleteCategories = async () => {
+    if (selectedCategories.length === 0) return;
+    if (!window.confirm(`Delete ${selectedCategories.length} selected categories from Supabase?`)) return;
+
+    setActionLoading(prev => ({ ...prev, bulkDeleteCategories: true }));
+    try {
+      const res = await bulkDeleteCategories(selectedCategories);
+      if (res.success) {
+        toast.success(`Deleted ${selectedCategories.length} categories from Supabase ✓`);
+        setSelectedCategories([]);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk delete failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error in bulk delete');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkDeleteCategories: false }));
+    }
+  };
+
+  // Bulk Create Categories
+  const handleBulkCreateCategories = async () => {
+    const rawNames = form.bulkNames || '';
+    const names = rawNames
+      .split(/[\n,]+/)
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    if (names.length === 0) {
+      toast.error('Please enter at least one category name');
+      return;
+    }
+
+    setActionLoading(prev => ({ ...prev, bulkCreateCategories: true }));
+    try {
+      const res = await bulkCreateCategories(names);
+      if (res.success) {
+        toast.success(`Created ${res.count || names.length} categories in Supabase ✓`);
+        setModal(null);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk category creation failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error creating categories');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkCreateCategories: false }));
+    }
+  };
+
+  // Bulk Create Channels
+  const handleBulkCreateChannels = async () => {
+    const rawInput = form.bulkNames || '';
+    const lines = rawInput
+      .split(/\n+/)
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      toast.error('Please enter at least one channel name');
+      return;
+    }
+
+    const items = lines.map((line: string) => {
+      const parts = line.split('|').map((s: string) => s.trim());
+      return {
+        name: parts[0] || '',
+        handle: parts[1] || '',
+        description: parts[2] || '',
+        verified: true
+      };
+    }).filter(c => c.name);
+
+    setActionLoading(prev => ({ ...prev, bulkCreateChannels: true }));
+    try {
+      const res = await bulkCreateChannels({ items });
+      if (res.success) {
+        toast.success(`Created ${res.count || items.length} channels in Supabase ✓`);
+        setModal(null);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk channel creation failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error creating channels');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkCreateChannels: false }));
+    }
+  };
+
+  // Bulk Create Actors
+  const handleBulkCreateActors = async () => {
+    const rawInput = form.bulkNames || '';
+    const lines = rawInput
+      .split(/[\n,]+/)
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      toast.error('Please enter at least one actor name');
+      return;
+    }
+
+    const items = lines.map((line: string) => {
+      const parts = line.split('|').map((s: string) => s.trim());
+      return {
+        name: parts[0] || '',
+        image: parts[1] || '',
+        cropX: 50,
+        cropY: 50,
+        cropZoom: 1
+      };
+    }).filter(a => a.name);
+
+    setActionLoading(prev => ({ ...prev, bulkCreateActors: true }));
+    try {
+      const res = await bulkCreateActors({ items });
+      if (res.success) {
+        toast.success(`Created ${res.count || items.length} actors in Supabase ✓`);
+        setModal(null);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk actor creation failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error creating actors');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkCreateActors: false }));
+    }
+  };
+
+  // Streamtape Single Import
+  const handleImportStreamtapeSingle = async (video: StreamtapeVideoItem) => {
+    setActionLoading(prev => ({ ...prev, [`st_${video.videoId}`]: true }));
+    try {
+      const res = await createStreamtapePost({
+        title: video.title,
+        videoId: video.videoId,
+        thumbnail: video.thumbnail,
+        channelId: channels[0]?.id || undefined,
+        channelName: channels[0]?.name || undefined
+      });
+      if (res.success) {
+        toast.success(`Imported "${video.title}" to Supabase ✓`);
+        // Remove from un-imported cloud videos immediately
+        setStreamtapeVideos(prev => prev.filter(v => v.videoId !== video.videoId));
+        setSelectedStreamtape(prev => prev.filter(id => id !== video.videoId));
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Import failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error importing video');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [`st_${video.videoId}`]: false }));
+    }
+  };
+
+  // Streamtape Bulk Import
+  const handleBulkImportStreamtape = async () => {
+    if (selectedStreamtape.length === 0) return;
+    setActionLoading(prev => ({ ...prev, bulkStreamtape: true }));
+    try {
+      const selectedItems = streamtapeVideos.filter(v => selectedStreamtape.includes(v.videoId));
+      const res = await bulkCreateStreamtapePosts({
+        videos: selectedItems.map(v => ({
+          title: v.title,
+          videoId: v.videoId,
+          thumbnail: v.thumbnail
+        })),
+        channelId: form.bulkStreamtapeChannelId || undefined,
+        categoryIds: formCategories
+      });
+
+      if (res.success) {
+        toast.success(`Imported ${res.createdCount} videos to Supabase (${res.skippedCount} skipped) ✓`);
+        // Remove imported items from cloud list
+        setStreamtapeVideos(prev => prev.filter(v => !selectedStreamtape.includes(v.videoId)));
+        setModal(null);
+        setSelectedStreamtape([]);
+        refreshAll();
+      } else {
+        toast.error(res.message || 'Bulk import failed');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error importing videos');
+    } finally {
+      setActionLoading(prev => ({ ...prev, bulkStreamtape: false }));
+    }
+  };
+
+  // Player Settings Save
+  const handleSavePlayerSettings = async () => {
+    setActionLoading(prev => ({ ...prev, savePlayer: true }));
+    try {
+      const res = await updatePlayerSettings(playerSettings.autoPlay, playerSettings.defaultServer);
+      if (res.success) {
+        toast.success('Player settings saved in Supabase ✓');
+        setPlayerSettings(res.data);
+      } else {
+        toast.error(res.message || 'Failed to update player settings');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error updating player settings');
+    } finally {
+      setActionLoading(prev => ({ ...prev, savePlayer: false }));
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Loading Animations */}
-      {buttonLoading.sync && <RocketLoader text="Syncing Posts" />}
-      {buttonDone.sync && <DoneAnimation onComplete={() => setButtonDone(prev => ({ ...prev, sync: false }))} />}
+    <div className="min-h-screen bg-[#0a0b10] text-gray-100 flex flex-col md:flex-row antialiased selection:bg-accent selection:text-white">
       
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-60 bg-card border-r border-border flex-col">
-        <div className="p-4 border-b border-border">
-          <h2 className="text-lg font-bold text-foreground">Admin Panel</h2>
-          <p className="text-xs text-muted-foreground">Manage your content</p>
+      {/* ── Sidebar Navigation ─────────────────────────────────────────────── */}
+      <aside className={`
+        fixed md:sticky top-0 left-0 z-40 h-screen w-64 bg-[#0e0f17]/95 backdrop-blur-2xl border-r border-white/[0.08] 
+        flex flex-col justify-between transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <div>
+          {/* Logo Brand Header */}
+          <div className="p-6 border-b border-white/[0.08] flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-accent to-purple-400 flex items-center justify-center shadow-lg shadow-accent/25">
+                <Play className="w-4 h-4 text-white fill-current" />
+              </div>
+              <div>
+                <h1 className="text-base font-bold text-white tracking-wide">XON STREAM</h1>
+                <p className="text-[10px] text-accent font-semibold tracking-widest uppercase">Admin Console</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setSidebarOpen(false)} 
+              className="md:hidden p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="p-4 space-y-1.5">
+            <button
+              onClick={() => { setTab('dashboard'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                tab === 'dashboard'
+                  ? 'bg-gradient-to-r from-accent/20 to-purple-500/10 text-white border border-accent/40 shadow-lg shadow-accent/15'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <BarChart3 className={`w-4 h-4 ${tab === 'dashboard' ? 'text-accent' : 'text-gray-400'}`} />
+                <span>Overview</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => { setTab('posts'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                tab === 'posts'
+                  ? 'bg-gradient-to-r from-accent/20 to-purple-500/10 text-white border border-accent/40 shadow-lg shadow-accent/15'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Film className={`w-4 h-4 ${tab === 'posts' ? 'text-accent' : 'text-gray-400'}`} />
+                <span>Posts & Media</span>
+              </div>
+              <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 text-gray-300 font-mono">
+                {posts.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setTab('channels'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                tab === 'channels'
+                  ? 'bg-gradient-to-r from-accent/20 to-purple-500/10 text-white border border-accent/40 shadow-lg shadow-accent/15'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Tv className={`w-4 h-4 ${tab === 'channels' ? 'text-accent' : 'text-gray-400'}`} />
+                <span>Channels</span>
+              </div>
+              <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 text-gray-300 font-mono">
+                {channels.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setTab('actors'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                tab === 'actors'
+                  ? 'bg-gradient-to-r from-accent/20 to-purple-500/10 text-white border border-accent/40 shadow-lg shadow-accent/15'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Users className={`w-4 h-4 ${tab === 'actors' ? 'text-accent' : 'text-gray-400'}`} />
+                <span>Actors</span>
+              </div>
+              <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 text-gray-300 font-mono">
+                {actors.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setTab('categories'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                tab === 'categories'
+                  ? 'bg-gradient-to-r from-accent/20 to-purple-500/10 text-white border border-accent/40 shadow-lg shadow-accent/15'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Tag className={`w-4 h-4 ${tab === 'categories' ? 'text-accent' : 'text-gray-400'}`} />
+                <span>Categories</span>
+              </div>
+              <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 text-gray-300 font-mono">
+                {categories.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setTab('player-settings'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                tab === 'player-settings'
+                  ? 'bg-gradient-to-r from-accent/20 to-purple-500/10 text-white border border-accent/40 shadow-lg shadow-accent/15'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Sliders className={`w-4 h-4 ${tab === 'player-settings' ? 'text-accent' : 'text-gray-400'}`} />
+                <span>Player Settings</span>
+              </div>
+            </button>
+          </nav>
         </div>
-        {SidebarContent}
-        <div className="p-4 border-t border-border">
-          <button onClick={async () => { await adminLogout(); signOut(); navigate('/meow'); }}
-            className="flex items-center gap-3 text-sm text-destructive hover:text-destructive/80 transition-colors w-full">
-            <LogOut className="w-4 h-4" /> Sign Out
+
+        {/* Footer Actions */}
+        <div className="p-4 border-t border-white/[0.08] space-y-2">
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-[11px] text-gray-400">Supabase Real-Time</span>
+            </div>
+            <button 
+              onClick={refreshAll} 
+              disabled={refreshing}
+              title="Refresh Data"
+              className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-accent' : ''}`} />
+            </button>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
           </button>
         </div>
       </aside>
 
-      {/* Mobile header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-card border-b border-border flex items-center px-4 gap-3">
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-full hover:bg-secondary">
-          <Menu className="w-5 h-5 text-foreground" />
-        </button>
-        <h2 className="text-lg font-bold text-foreground">Admin</h2>
-        <button onClick={async () => { await adminLogout(); signOut(); navigate('/meow'); }} className="ml-auto p-2 text-destructive">
-          <LogOut className="w-5 h-5" />
-        </button>
-      </div>
+      {/* Backdrop for mobile drawer */}
       {sidebarOpen && (
-        <>
-          <div className="md:hidden fixed inset-0 z-40 bg-background/60" onClick={() => setSidebarOpen(false)} />
-          <aside className="md:hidden fixed top-14 left-0 bottom-0 z-50 w-60 bg-card border-r border-border flex flex-col animate-slide-in-left">
-            {SidebarContent}
-          </aside>
-        </>
+        <div 
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
+        />
       )}
 
-      {/* Content */}
-      <div className="flex-1 p-4 md:p-6 mt-14 md:mt-0 overflow-auto">
-        {/* Loading indicator for tab */}
-        {tabLoading[tab] && (
-          <div className="flex items-center justify-center py-20">
-            <RefreshCw className="w-8 h-8 animate-spin text-accent" />
-            <span className="ml-3 text-muted-foreground">Loading...</span>
-          </div>
-        )}
-
-        {tab === 'dashboard' && !tabLoading.dashboard && (
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-foreground mb-6">Dashboard</h1>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8">
-              {stats.map(s => (
-                <div key={s.label} className="bg-card rounded-[12px] border border-border p-4 md:p-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs md:text-sm text-muted-foreground">{s.label}</span>
-                    <s.icon className={`w-4 h-4 md:w-5 md:h-5 ${s.color}`} />
-                  </div>
-                  <p className="text-2xl md:text-3xl font-bold text-foreground">{s.value}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-3 mb-6 flex-wrap items-center">
-              <button onClick={async () => {
-                setButtonLoading(prev => ({ ...prev, sync: true }));
-                setButtonDone(prev => ({ ...prev, sync: false }));
-                try {
-                  const result = await syncPosts(syncStartPage, syncEndPage);
-                  if (result.success) {
-                    const addedCount = result.data?.added || 0;
-                    toast.success(addedCount > 0 ? `${addedCount} new post(s) synced ✓` : 'Everything is already synced ✓');
-                    refreshAll();
-                    setButtonLoading(prev => ({ ...prev, sync: false }));
-                    setButtonDone(prev => ({ ...prev, sync: true }));
-                  } else {
-                    toast.error(result.message || 'Sync failed');
-                    setButtonLoading(prev => ({ ...prev, sync: false }));
-                  }
-                } catch (error) {
-                  console.error('Sync error:', error);
-                  toast.error('Could not reach backend');
-                  setButtonLoading(prev => ({ ...prev, sync: false }));
-                }
-              }}
-                disabled={buttonLoading.sync}
-                className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[140px] justify-center">
-                {buttonLoading.sync ? <Loader size="small" /> : <><RefreshCw className="w-4 h-4" /> Sync Posts</>}
-              </button>
-              <div className="flex items-center gap-2 bg-secondary/30 px-3 py-2 rounded-[20px] border border-border">
-                <span className="text-xs text-muted-foreground font-medium">Seek Pages:</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={syncStartPage}
-                  onChange={e => setSyncStartPage(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-12 text-center bg-card border border-border rounded-md text-xs py-1 text-foreground outline-none focus:ring-1 focus:ring-accent"
-                />
-                <span className="text-xs text-muted-foreground">to</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={syncEndPage}
-                  onChange={e => setSyncEndPage(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-12 text-center bg-card border border-border rounded-md text-xs py-1 text-foreground outline-none focus:ring-1 focus:ring-accent"
-                />
-              </div>
-              <button onClick={async () => {
-                if (!window.confirm('Are you sure you want to flush all cache? This will refresh all data from the database.')) return;
-                setButtonLoading(prev => ({ ...prev, flush: true }));
-                try {
-                  const resp = await fetch(`${API_BASE}/api/admin/cache/flush`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: adminAuthHeaders(),
-                  });
-                  const json = await resp.json();
-                  if (json.success) {
-                    toast.success('Cache flushed successfully! ✓');
-                    refreshAll();
-                  } else {
-                    toast.error(json.message || 'Failed to flush cache');
-                  }
-                } catch (error) {
-                  console.error('Cache flush error:', error);
-                  toast.error('Could not reach backend');
-                } finally {
-                  setButtonLoading(prev => ({ ...prev, flush: false }));
-                }
-              }}
-                disabled={buttonLoading.flush}
-                className="flex items-center gap-2 px-5 py-2.5 bg-orange-500/20 text-orange-300 border border-orange-500/30 rounded-[20px] text-sm font-medium hover:bg-orange-500/30 transition-all shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 min-w-[140px] justify-center">
-                {buttonLoading.flush ? <Loader size="small" /> : <><RefreshCw className="w-4 h-4" /> Flush Cache</>}
-              </button>
-              <button onClick={async () => {
-                setButtonLoading(prev => ({ ...prev, clean: true }));
-                await handleCleanAllTitles();
-                setButtonLoading(prev => ({ ...prev, clean: false }));
-              }}
-                disabled={buttonLoading.clean}
-                className="flex items-center gap-2 px-5 py-2.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-[20px] text-sm font-medium hover:bg-purple-500/30 transition-all shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 min-w-[140px] justify-center">
-                {buttonLoading.clean ? <Loader size="small" /> : <><Sparkles className="w-4 h-4" /> Format File Fix</>}
-              </button>
-              <button onClick={async () => {
-                if (!window.confirm('Remove duplicate posts, channels, actors, and categories? This will keep the oldest entry and delete the rest.')) return;
-                setButtonLoading(prev => ({ ...prev, duplicates: true }));
-                try {
-                  const result = await deleteDuplicates();
-                  if (result.success) {
-                    const d = result.data;
-                    const parts = [];
-                    if (d.posts?.deleted > 0) parts.push(`${d.posts.deleted} posts`);
-                    if (d.channels?.deleted > 0) parts.push(`${d.channels.deleted} channels`);
-                    if (d.actors?.deleted > 0) parts.push(`${d.actors.deleted} actors`);
-                    if (d.categories?.deleted > 0) parts.push(`${d.categories.deleted} categories`);
-                    if (d.postActors?.deleted > 0) parts.push(`${d.postActors.deleted} actor links`);
-                    if (d.postVideoSources?.deleted > 0) parts.push(`${d.postVideoSources.deleted} video sources`);
-                    const msg = parts.length > 0 ? `Deleted ${parts.join(', ')} ✓` : 'No duplicates found ✓';
-                    toast.success(msg);
-                    refreshAll();
-                  } else {
-                    toast.error(result.message || 'Failed to delete duplicates');
-                  }
-                } catch (error) {
-                  console.error('Delete duplicates error:', error);
-                  toast.error('Could not reach backend');
-                } finally {
-                  setButtonLoading(prev => ({ ...prev, duplicates: false }));
-                }
-              }}
-                disabled={buttonLoading.duplicates}
-                className="flex items-center gap-2 px-5 py-2.5 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-[20px] text-sm font-medium hover:bg-yellow-500/30 transition-all shadow-lg hover:shadow-yellow-500/30 disabled:opacity-50 min-w-[140px] justify-center">
-                {buttonLoading.duplicates ? <Loader size="small" /> : <><CopyX className="w-4 h-4" /> Delete Duplicates</>}
-              </button>
-              <button onClick={async () => {
-                setButtonLoading(prev => ({ ...prev, deleteAll: true }));
-                await handleDeleteAllPosts();
-                setButtonLoading(prev => ({ ...prev, deleteAll: false }));
-              }}
-                disabled={buttonLoading.deleteAll}
-                className="flex items-center gap-2 px-5 py-2.5 bg-destructive text-destructive-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[140px] justify-center">
-                {buttonLoading.deleteAll ? <Loader size="small" /> : <><Trash2 className="w-4 h-4" /> Delete All</>}
-              </button>
-            </div>
-            <div className="bg-card rounded-[12px] border border-border p-4 md:p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Recent Activity</h3>
-              <div className="space-y-3">
-                {backendPosts.slice(0, 5).map(v => (
-                  <div key={v.id} className="flex items-center gap-3 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
-                    <span className="text-muted-foreground hidden sm:inline">Video:</span>
-                    <span className="text-foreground font-medium truncate">{v.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+      {/* ── Main Content Area ──────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col min-w-0 pb-28 md:pb-12">
         
-        {tab === 'posts' && !tabLoading.posts && (() => {
-          const filteredPosts = postSearch.trim()
-            ? backendPosts.filter(p =>
-                p.title?.toLowerCase().includes(postSearch.toLowerCase()) ||
-                p.channelName?.toLowerCase().includes(postSearch.toLowerCase())
-              )
-            : backendPosts;
-
-          // Sort posts
-          const sortedPosts = [...filteredPosts].sort((a, b) => {
-            const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
-            const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
-            return postSortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-          });
-          
-          // Pagination logic
-          const totalPages = Math.ceil(sortedPosts.length / POSTS_PER_PAGE);
-          const startIndex = (currentPage - 1) * POSTS_PER_PAGE;
-          const endIndex = startIndex + POSTS_PER_PAGE;
-          const paginatedPosts = sortedPosts.slice(startIndex, endIndex);
-          
-          return (
-          <div>
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">Posts ({paginatedPosts.length}{postSearch ? ` of ${backendPosts.length}` : ''})</h1>
-              <div className="flex gap-2 flex-wrap">
-                {selectedIds.size > 0 && (
-                  <>
-                    <button onClick={() => { setBulkChannel(''); setBulkActors([]); setBulkAction('channel'); setModal({ type: 'bulk', mode: 'edit' }); }}
-                      className="flex items-center gap-2 px-4 py-2 bg-accent/20 text-accent rounded-[20px] text-sm font-medium hover:bg-accent/30 transition-colors">
-                      Bulk Edit ({selectedIds.size})
-                    </button>
-                    <button onClick={handleBulkDelete}
-                      className="flex items-center gap-2 px-4 py-2 bg-destructive/20 text-destructive rounded-[20px] text-sm font-medium hover:bg-destructive/30 transition-colors">
-                      <Trash2 className="w-4 h-4" /> Delete ({selectedIds.size})
-                    </button>
-                  </>
-                )}
-                <button onClick={() => { if (selectedIds.size === sortedPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(sortedPosts.map(p => p.id))); }}
-                  className="px-4 py-2 rounded-[20px] bg-secondary text-secondary-foreground text-sm font-medium hover:bg-tertiary transition-colors">
-                  {selectedIds.size === sortedPosts.length && sortedPosts.length > 0 ? 'Deselect All' : 'Select All'}
-                </button>
-                <button onClick={fetchBackendPosts} title="Refresh" className="p-2 rounded-[20px] bg-secondary hover:bg-tertiary transition-colors">
-                  <RefreshCw className={`w-4 h-4 text-secondary-foreground ${loadingBackend ? 'animate-spin' : ''}`} />
-                </button>
-                <button onClick={() => openAdd('post')} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity">
-                  <Plus className="w-4 h-4" /> Add
-                </button>
-              </div>
+        {/* Top Sticky Header */}
+        <header className="sticky top-0 z-20 h-16 bg-[#0a0b10]/80 backdrop-blur-xl border-b border-white/[0.08] px-4 md:px-8 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-2 rounded-xl bg-white/5 text-gray-300 hover:text-white"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm md:text-base font-bold text-white capitalize tracking-wide">
+                {tab.replace('-', ' ')}
+              </h2>
+              <span className="text-gray-500 text-xs hidden sm:inline">•</span>
+              <span className="text-xs text-gray-400 hidden sm:inline">Admin Management Console</span>
             </div>
-            {/* Search and Sort controls */}
-            <div className="flex gap-3 mb-4 flex-wrap sm:flex-nowrap">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  value={postSearch}
-                  onChange={e => setPostSearch(e.target.value)}
-                  placeholder="Search posts by title or channel..."
-                  className="w-full pl-10 pr-10 py-2.5 bg-card border border-border rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-                {postSearch && (
-                  <button onClick={() => setPostSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-2 bg-card border border-border px-4 py-1 rounded-[24px] flex-shrink-0">
-                <span className="text-xs text-muted-foreground font-medium">Sort:</span>
-                <select
-                  value={postSortOrder}
-                  onChange={e => setPostSortOrder(e.target.value as 'newest' | 'oldest')}
-                  className="bg-transparent text-sm text-foreground outline-none cursor-pointer pr-4"
-                >
-                  <option value="newest" className="bg-card text-foreground">Newest First</option>
-                  <option value="oldest" className="bg-card text-foreground">Oldest First</option>
-                </select>
-              </div>
-            </div>
-            
-            {/* Loading indicator */}
-            {loadingBackend && (
-              <div className="flex items-center justify-center py-20">
-                <RefreshCw className="w-8 h-8 animate-spin text-accent" />
-                <span className="ml-3 text-muted-foreground">Loading posts...</span>
-              </div>
-            )}
-            
-            {/* Desktop Table */}
-            <div className="hidden md:block bg-card rounded-[12px] border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="p-3 w-8"><input type="checkbox" checked={selectedIds.size === sortedPosts.length && sortedPosts.length > 0}
-                      onChange={() => { if (selectedIds.size === sortedPosts.length) setSelectedIds(new Set()); else setSelectedIds(new Set(sortedPosts.map(p => p.id))); }}
-                      className="accent-accent w-4 h-4" /></th>
-                    <th className="text-left p-3 text-muted-foreground font-medium">Thumbnail</th>
-                    <th className="text-left p-3 text-muted-foreground font-medium">Title</th>
-                    <th className="text-left p-3 text-muted-foreground font-medium">Channel</th>
-                    <th className="text-left p-3 text-muted-foreground font-medium">Actors</th>
-                    <th className="text-left p-3 text-muted-foreground font-medium">Category</th>
-                    <th className="text-left p-3 text-muted-foreground font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedPosts.map(p => (
-                    <tr key={p.id} className={`border-b border-border hover:bg-secondary/30 transition-colors ${selectedIds.has(p.id) ? 'bg-accent/5' : ''}`}>
-                      <td className="p-3"><input type="checkbox" checked={selectedIds.has(p.id)}
-                        onChange={() => { const s = new Set(selectedIds); if (s.has(p.id)) s.delete(p.id); else s.add(p.id); setSelectedIds(s); }}
-                        className="accent-accent w-4 h-4" /></td>
-                      <td className="p-3">
-                        <Thumbnail post={p} />
-                      </td>
-                      <td className="p-3 text-foreground font-medium max-w-[200px] truncate">{p.title}</td>
-                      <td className="p-3 text-muted-foreground">{p.channelName || '—'}</td>
-                      <td className="p-3 text-muted-foreground text-xs">{(p.actors || []).join(', ') || '—'}</td>
-                      <td className="p-3">
-                        {(() => {
-                          const cats = p.categories || [];
-                          return cats.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {cats.map((c: string) => (
-                                <span key={c} className="px-2 py-0.5 bg-primary/15 text-primary text-xs rounded-full truncate max-w-[90px]">{c}</span>
-                              ))}
-                            </div>
-                          ) : <span className="text-muted-foreground text-xs">—</span>;
-                        })()}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex gap-2">
-                          <button onClick={() => openEdit('post', p)} className="p-1.5 rounded hover:bg-secondary transition-colors text-accent"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => handleDeletePost(p.id)} className="p-1.5 rounded hover:bg-secondary transition-colors text-destructive"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="md:hidden space-y-3">
-              {paginatedPosts.map(p => (
-                <div key={p.id} className={`bg-card rounded-[12px] border border-border p-3 flex items-center gap-3 ${selectedIds.has(p.id) ? 'ring-2 ring-accent/40' : ''}`}>
-                  <input type="checkbox" checked={selectedIds.has(p.id)}
-                    onChange={() => { const s = new Set(selectedIds); if (s.has(p.id)) s.delete(p.id); else s.add(p.id); setSelectedIds(s); }}
-                    className="accent-accent w-4 h-4 flex-shrink-0" />
-                  <MobileThumbnail post={p} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{p.title}</p>
-                    <p className="text-xs text-muted-foreground">{p.channelName || '—'}</p>
-                    {(() => {
-                      const cats = p.categories || [];
-                      return cats.length > 0 ? (
-                        <p className="text-xs text-primary/80 truncate">{cats.join(', ')}</p>
-                      ) : null;
-                    })()}
-                  </div>
-                  <div className="flex gap-1 flex-shrink-0">
-                    <button onClick={() => openEdit('post', p)} className="p-1.5 rounded hover:bg-secondary text-accent"><Pencil className="w-4 h-4" /></button>
-                    <button onClick={() => handleDeletePost(p.id)} className="p-1.5 rounded hover:bg-secondary text-destructive"><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-6">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="px-4 py-2 bg-card border border-border rounded-[12px] text-sm font-medium text-foreground hover:bg-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                
-                <div className="flex items-center gap-1.5">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`w-10 h-10 rounded-[12px] text-sm font-medium transition-all ${
-                        currentPage === page
-                          ? 'bg-accent text-white shadow-lg shadow-accent/30'
-                          : 'bg-card border border-border text-foreground hover:bg-secondary'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-                </div>
-                
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-4 py-2 bg-card border border-border rounded-[12px] text-sm font-medium text-foreground hover:bg-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            )}
           </div>
-          );
-        })()}
 
-        {tab === 'channels' && !tabLoading.channels && (() => {
-          const filteredChs = channelSearch.trim()
-            ? chs.filter(ch => ch.name.toLowerCase().includes(channelSearch.toLowerCase()) || ch.handle?.toLowerCase().includes(channelSearch.toLowerCase()))
-            : chs;
-          return (
-          <div>
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">Channels ({filteredChs.length}{channelSearch ? ` of ${chs.length}` : ''})</h1>
-              <button onClick={() => openAdd('channel')} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity">
-                <Plus className="w-4 h-4" /> Add
-              </button>
-            </div>
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input value={channelSearch} onChange={e => setChannelSearch(e.target.value)} placeholder="Search channels by name or handle..." className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
-              {channelSearch && <button onClick={() => setChannelSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredChs.map(ch => (
-                <div key={ch.id} className="bg-card rounded-[12px] border border-border p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <img src={ch.logo} alt={ch.name} className="w-12 h-12 rounded-full" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{ch.name}</p>
-                      <p className="text-xs text-muted-foreground">{ch.handle}</p>
+          <div className="flex items-center gap-2 md:gap-3">
+            <button 
+              onClick={() => navigate('/')} 
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-medium border border-white/5 transition-all"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">View Site</span>
+            </button>
+            <button 
+              onClick={refreshAll} 
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-accent/15 hover:bg-accent/25 text-accent text-xs font-semibold border border-accent/30 transition-all"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{refreshing ? 'Syncing...' : 'Live Sync'}</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Content Body */}
+        <div className="p-4 md:p-8 max-w-7xl w-full mx-auto space-y-6">
+
+          {/* ────────────────────────────────────────────────────────────────
+              TAB 1: DASHBOARD OVERVIEW
+          ────────────────────────────────────────────────────────────────── */}
+          {tab === 'dashboard' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              
+              {/* Stat Metric Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-accent/40 transition-all shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Total Posts</span>
+                    <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
+                      <Film className="w-4 h-4" />
                     </div>
                   </div>
-                  {(() => { const count = backendPosts.filter(p => p.channelName === ch.name).length; const parts = []; if (count > 0) parts.push(`${count} videos`); if (ch.subscribers > 0) parts.push(`${ch.subscribers.toLocaleString()} subs`); return parts.length > 0 ? <p className="text-xs text-muted-foreground mb-3">{parts.join(' · ')}</p> : null; })()}
-                  <div className="flex gap-2">
-                    <button onClick={() => openEdit('channel', ch)} className="flex-1 py-1.5 text-xs bg-secondary text-secondary-foreground rounded-[20px] hover:bg-secondary/80 transition-colors">Edit</button>
-                    <button onClick={() => handleDeleteChannel(ch.id)} className="flex-1 py-1.5 text-xs bg-destructive/10 text-destructive rounded-[20px] hover:bg-destructive/20 transition-colors">Delete</button>
-                  </div>
+                  <p className="text-2xl md:text-3xl font-extrabold text-white mt-3 font-mono">{posts.length}</p>
+                  <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Live in Supabase
+                  </p>
                 </div>
-              ))}
-            </div>
-          </div>
-          );
-        })()}
 
-        {tab === 'actors' && !tabLoading.actors && (() => {
-          const filteredActs = actorSearch.trim()
-            ? acts.filter(a => a.name.toLowerCase().includes(actorSearch.toLowerCase()))
-            : acts;
-          return (
-          <div>
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">Actors ({filteredActs.length}{actorSearch ? ` of ${acts.length}` : ''})</h1>
-              <button onClick={() => openAdd('actor')} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity">
-                <Plus className="w-4 h-4" /> Add
-              </button>
-            </div>
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input value={actorSearch} onChange={e => setActorSearch(e.target.value)} placeholder="Search actors by name..." className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
-              {actorSearch && <button onClick={() => setActorSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {filteredActs.map(a => (
-                <div key={a.id} className="bg-card rounded-[12px] border border-border p-3 text-center">
-                  <img src={a.image} alt={a.name} className="w-16 h-16 rounded-full mx-auto mb-2" />
-                  <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
-                  <div className="flex gap-1 mt-2">
-                    <button onClick={() => openEdit('actor', a)} className="flex-1 py-1 text-xs bg-secondary rounded-[20px] hover:bg-secondary/80">Edit</button>
-                    <button onClick={() => handleDeleteActor(a.id)} className="flex-1 py-1 text-xs bg-destructive/10 text-destructive rounded-[20px] hover:bg-destructive/20">Del</button>
+                <div className="bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-accent/40 transition-all shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Channels</span>
+                    <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
+                      <Tv className="w-4 h-4" />
+                    </div>
                   </div>
+                  <p className="text-2xl md:text-3xl font-extrabold text-white mt-3 font-mono">{channels.length}</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Configured creators</p>
                 </div>
-              ))}
-            </div>
-          </div>
-          );
-        })()}
 
-        {tab === 'categories' && !tabLoading.categories && (() => {
-          const filteredCats = categorySearch.trim()
-            ? cats.filter(c => c.id !== 'all' && c.name.toLowerCase().includes(categorySearch.toLowerCase()))
-            : cats.filter(c => c.id !== 'all');
-          return (
-          <div>
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">Categories ({filteredCats.length}{categorySearch ? ` of ${cats.filter(c=>c.id!=='all').length}` : ''})</h1>
-              <button onClick={() => openAdd('category')} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity">
-                <Plus className="w-4 h-4" /> Add
-              </button>
-            </div>
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input value={categorySearch} onChange={e => setCategorySearch(e.target.value)} placeholder="Search categories..." className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-[24px] text-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
-              {categorySearch && <button onClick={() => setCategorySearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {filteredCats.map(cat => (
-                <div key={cat.id} className="bg-card rounded-[12px] border border-border p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{cat.icon || '📁'}</span>
-                    <span className="text-sm font-medium text-foreground">{cat.name}</span>
+                <div className="bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-accent/40 transition-all shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Actors</span>
+                    <div className="w-9 h-9 rounded-xl bg-pink-500/10 text-pink-400 flex items-center justify-center border border-pink-500/20">
+                      <Users className="w-4 h-4" />
+                    </div>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit('category', cat)} className="p-1.5 rounded hover:bg-secondary"><Pencil className="w-4 h-4 text-accent" /></button>
-                    <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 rounded hover:bg-secondary"><Trash2 className="w-4 h-4 text-destructive" /></button>
-                  </div>
+                  <p className="text-2xl md:text-3xl font-extrabold text-white mt-3 font-mono">{actors.length}</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Profiles with focal crop</p>
                 </div>
-              ))}
-            </div>
-          </div>
-          );
-        })()}
 
-        {tab === 'settings' && (
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-foreground mb-6">Settings</h1>
-            <div className="bg-card rounded-[12px] border border-border p-4 md:p-6 max-w-md space-y-6">
-              <Field label="Site Name" value={settings.siteName} onChange={v => setSettings({ ...settings, siteName: v })} />
-              <Field label="Site Logo URL" value={settings.siteLogo || ''} onChange={v => setSettings({ ...settings, siteLogo: v })} placeholder="https://..." />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Enable Authentication</p>
-                  <p className="text-xs text-muted-foreground">Allow sign in / sign up</p>
+                <div className="bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-accent/40 transition-all shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Categories</span>
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+                      <Tag className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-2xl md:text-3xl font-extrabold text-white mt-3 font-mono">{categories.length}</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Taxonomy tags</p>
                 </div>
-                <button onClick={() => setSettings({ ...settings, authEnabled: !settings.authEnabled })}
-                  className={`w-11 h-6 rounded-full relative transition-colors ${settings.authEnabled ? 'bg-accent' : 'bg-muted'}`}>
-                  <div className={`absolute top-0.5 w-5 h-5 bg-foreground rounded-full shadow transition-transform ${settings.authEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+              </div>
+
+              {/* Quick Launch Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button
+                  onClick={handleOpenAddPost}
+                  className="p-5 rounded-2xl bg-gradient-to-br from-purple-500/10 via-white/[0.02] to-transparent border border-purple-500/20 hover:border-purple-500/50 text-left group transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-accent/20 text-accent flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white mt-4">Create New Post</h3>
+                  <p className="text-xs text-gray-400 mt-1">Publish a new video with actors, channel, and streamtape source.</p>
+                </button>
+
+                <button
+                  onClick={() => { setTab('posts'); setPostSubTab('streamtape'); }}
+                  className="p-5 rounded-2xl bg-gradient-to-br from-blue-500/10 via-white/[0.02] to-transparent border border-blue-500/20 hover:border-blue-500/50 text-left group transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <DownloadCloud className="w-5 h-5" />
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white mt-4">Streamtape Cloud Import</h3>
+                  <p className="text-xs text-gray-400 mt-1">Browse {streamtapeVideos.length} remote cloud videos and batch import.</p>
+                </button>
+
+                <button
+                  onClick={() => { setForm({ bulkNames: '' }); setModal({ type: 'bulk-category', mode: 'add' }); }}
+                  className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-white/[0.02] to-transparent border border-emerald-500/20 hover:border-emerald-500/50 text-left group transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FolderPlus className="w-5 h-5" />
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white mt-4">Bulk Add Categories</h3>
+                  <p className="text-xs text-gray-400 mt-1">Batch insert multiple tags and categories in one click.</p>
                 </button>
               </div>
-              <button onClick={async () => {
-                setButtonLoading(prev => ({ ...prev, saveSettings: true }));
-                await handleSaveSettings();
-                setButtonLoading(prev => ({ ...prev, saveSettings: false }));
-              }}
-                disabled={buttonLoading.saveSettings}
-                className="px-6 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[140px] flex items-center justify-center">
-                {buttonLoading.saveSettings ? <Loader size="small" /> : 'Save Settings'}
-              </button>
-            </div>
-          </div>
-        )}
 
-        {tab === 'player-settings' && (
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-foreground mb-6">Player Settings</h1>
-            <div className="bg-card rounded-[12px] border border-border p-4 md:p-6 max-w-md space-y-6">
-              {/* Auto-Play Setting */}
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-3">Auto-Play Videos</label>
-                <p className="text-xs text-muted-foreground mb-4">Enable or disable automatic video playback when users open a video page.</p>
-                
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setPlayerSettings({ ...playerSettings, autoPlay: !playerSettings.autoPlay })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      playerSettings.autoPlay ? 'bg-accent' : 'bg-secondary'
-                    }`}
+              {/* Recent Activity Table */}
+              <div className="bg-[#12131a]/80 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Film className="w-4 h-4 text-accent" /> Recent Published Videos
+                  </h3>
+                  <button 
+                    onClick={() => setTab('posts')}
+                    className="text-xs text-accent hover:underline font-semibold"
                   >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        playerSettings.autoPlay ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
+                    View All ({posts.length}) →
                   </button>
-                  <span className="text-sm text-foreground">
-                    {playerSettings.autoPlay ? 'Auto-play enabled' : 'Auto-play disabled'}
-                  </span>
+                </div>
+
+                <div className="divide-y divide-white/5">
+                  {posts.slice(0, 6).map(p => (
+                    <div key={p.id} className="py-3 flex items-center justify-between gap-4 group">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img 
+                          src={buildThumbnailUrl(p.thumbnail)} 
+                          alt={p.title}
+                          className="w-14 h-9 rounded-lg object-cover bg-white/5 flex-shrink-0"
+                          onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate">{p.title}</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            {p.channelName || 'Unassigned'} • {p.categories?.join(', ') || p.category || 'No Category'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleOpenEditPost(p)}
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
+                          title="Edit"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePost(p.id, p.title)}
+                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {posts.length === 0 && (
+                    <p className="text-xs text-muted-foreground py-6 text-center">No posts found in database.</p>
+                  )}
                 </div>
               </div>
 
-              {/* Default Server Setting */}
-              <div className="pt-4 border-t border-border">
-                <label className="text-sm font-medium text-foreground block mb-3">Default Video Server</label>
-                <p className="text-xs text-muted-foreground mb-4">Select which server users will see by default when opening videos.</p>
-                
-                <div className="flex gap-2">
+            </div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              TAB 2: POSTS & STREAMTAPE CLOUD
+          ────────────────────────────────────────────────────────────────── */}
+          {tab === 'posts' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              
+              {/* Top Sub-Navigation Header */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#12131a]/80 border border-white/10 p-3 rounded-2xl">
+                <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/5">
                   <button
-                    type="button"
-                    onClick={() => setPlayerSettings({ ...playerSettings, defaultServer: 'SERVER_01' })}
-                    className={`flex-1 px-4 py-3 rounded-full text-sm font-medium transition-all ${
-                      playerSettings.defaultServer === 'SERVER_01'
-                        ? 'bg-accent text-white shadow-lg shadow-accent/30'
-                        : 'bg-secondary text-secondary-foreground hover:bg-tertiary'
+                    onClick={() => setPostSubTab('all')}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                      postSubTab === 'all'
+                        ? 'bg-accent text-white shadow-md shadow-accent/25'
+                        : 'text-gray-400 hover:text-white'
                     }`}
                   >
-                    SERVER 01
-                    <span className="block text-xs font-normal opacity-80 mt-0.5">Seekstreaming</span>
+                    Published ({posts.length})
                   </button>
                   <button
-                    type="button"
-                    onClick={() => setPlayerSettings({ ...playerSettings, defaultServer: 'SERVER_02' })}
-                    className={`flex-1 px-4 py-3 rounded-full text-sm font-medium transition-all ${
-                      playerSettings.defaultServer === 'SERVER_02'
-                        ? 'bg-accent text-white shadow-lg shadow-accent/30'
-                        : 'bg-secondary text-secondary-foreground hover:bg-tertiary'
+                    onClick={() => setPostSubTab('streamtape')}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      postSubTab === 'streamtape'
+                        ? 'bg-accent text-white shadow-md shadow-accent/25'
+                        : 'text-gray-400 hover:text-white'
                     }`}
                   >
-                    SERVER 02
-                    <span className="block text-xs font-normal opacity-80 mt-0.5">Streamtape</span>
+                    <DownloadCloud className="w-3.5 h-3.5" />
+                    <span>New Cloud Videos ({streamtapeVideos.length})</span>
                   </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {postSubTab === 'all' ? (
+                    <button
+                      onClick={handleOpenAddPost}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold shadow-lg shadow-accent/25 transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>New Post</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (selectedStreamtape.length === 0) {
+                          toast.error('Select at least one video to import');
+                          return;
+                        }
+                        setForm({ bulkStreamtapeChannelId: channels[0]?.id || '' });
+                        setFormCategories([]);
+                        setModal({ type: 'bulk-streamtape', mode: 'add' });
+                      }}
+                      disabled={selectedStreamtape.length === 0}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-lg shadow-blue-600/25 transition-all"
+                    >
+                      <DownloadCloud className="w-4 h-4" />
+                      <span>Bulk Import ({selectedStreamtape.length})</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {playerSettings.updatedAt && (
-                <p className="text-xs text-muted-foreground">
-                  Last updated: {new Date(playerSettings.updatedAt).toLocaleString()}
-                </p>
-              )}
-
-              <button 
-                onClick={async () => {
-                  setButtonLoading(prev => ({ ...prev, savePlayer: true }));
-                  await handleSavePlayerSettings();
-                  setButtonLoading(prev => ({ ...prev, savePlayer: false }));
-                }}
-                disabled={buttonLoading.savePlayer}
-                className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center"
-              >
-                {buttonLoading.savePlayer ? <Loader size="small" /> : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {tab === 'support' && !tabLoading.support && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-xl md:text-2xl font-bold text-foreground">Support Messages</h1>
-                <p className="text-xs text-muted-foreground">Read and manage bug reports, requests, and contact forms sent by users.</p>
-              </div>
-              <button
-                onClick={async () => {
-                  setTabLoading(prev => ({ ...prev, support: true }));
-                  try {
-                    const r = await fetchSupportRequests();
-                    if (r.success) {
-                      setSupportRequests(r.data);
-                      toast.success('Support messages refreshed.');
-                    }
-                  } catch (err: any) {
-                    toast.error(err.message || 'Failed to fetch messages');
-                  } finally {
-                    setTabLoading(prev => ({ ...prev, support: false }));
-                  }
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-secondary border border-border text-foreground rounded-[20px] text-xs font-semibold hover:bg-secondary/80 transition-colors self-start sm:self-auto"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Refresh
-              </button>
-            </div>
-
-            {/* Filter controls */}
-            <div className="flex flex-col md:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={supportSearch}
-                  onChange={e => setSupportSearch(e.target.value)}
-                  placeholder="Search by name, email, or message..."
-                  className="w-full pl-10 pr-4 py-2 bg-secondary/50 border border-border rounded-[24px] text-foreground text-sm outline-none transition-all focus:ring-2 focus:ring-accent focus:border-transparent"
-                />
-              </div>
-              <div className="flex gap-1.5 overflow-x-auto pb-1 md:pb-0">
-                {[
-                  { id: 'all', label: 'All Messages' },
-                  { id: 'general', label: 'Contact' },
-                  { id: 'bug', label: 'Bugs' },
-                  { id: 'request', label: 'Requests' }
-                ].map(f => (
-                  <button
-                    key={f.id}
-                    onClick={() => setSupportTypeFilter(f.id as any)}
-                    className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-                      supportTypeFilter === f.id
-                        ? 'bg-accent text-white'
-                        : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Support Messages List */}
-            {(() => {
-              // Parse messages and filter
-              const parsedRequests = supportRequests.map(req => {
-                const parsed = parseDescription(req.description);
-                return {
-                  ...req,
-                  type: parsed.type,
-                  cleanDescription: parsed.cleanDesc
-                };
-              });
-
-              const filtered = parsedRequests.filter(req => {
-                // Type filter
-                if (supportTypeFilter !== 'all' && req.type !== supportTypeFilter) {
-                  return false;
-                }
-                // Text search
-                if (supportSearch.trim()) {
-                  const q = supportSearch.toLowerCase();
-                  return (
-                    req.fullName.toLowerCase().includes(q) ||
-                    req.email.toLowerCase().includes(q) ||
-                    req.cleanDescription.toLowerCase().includes(q)
-                  );
-                }
-                return true;
-              });
-
-              // Sort by date (newest first)
-              const sorted = [...filtered].sort((a, b) => {
-                const timeA = new Date(a.createdAt).getTime();
-                const timeB = new Date(b.createdAt).getTime();
-                return timeB - timeA;
-              });
-
-              if (sorted.length === 0) {
-                return (
-                  <div className="bg-card/40 border border-border rounded-2xl p-12 text-center max-w-lg mx-auto mt-6">
-                    <MessageSquare className="w-12 h-12 text-muted-foreground/45 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-foreground mb-1">No Messages</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {supportSearch.trim() || supportTypeFilter !== 'all'
-                        ? 'No messages match your search filters.'
-                        : 'Everything is quiet! There are currently no support requests from users.'}
-                    </p>
-                  </div>
-                );
-              }
-
-              return (
+              {/* Sub-Tab 2A: Published Posts */}
+              {postSubTab === 'all' && (
                 <div className="space-y-4">
-                  {/* Desktop view (Hidden on mobile) */}
-                  <div className="hidden lg:block overflow-hidden bg-card/20 border border-border rounded-xl">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-border bg-card/60 text-xs font-bold text-muted-foreground uppercase">
-                          <th className="px-6 py-4 w-48">Date</th>
-                          <th className="px-6 py-4 w-56">User</th>
-                          <th className="px-6 py-4 w-28">Type</th>
-                          <th className="px-6 py-4">Message</th>
-                          <th className="px-6 py-4 w-24 text-center">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/60 text-sm">
-                        {sorted.map(req => {
-                          const dateStr = new Date(req.createdAt).toLocaleString(undefined, {
-                            dateStyle: 'medium',
-                            timeStyle: 'short'
-                          });
+                  {/* Search and Filters */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="relative">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={postSearch}
+                        onChange={e => { setPostSearch(e.target.value); setPage(1); }}
+                        placeholder="Search posts by title or channel..."
+                        className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder:text-gray-500 outline-none focus:border-accent"
+                      />
+                    </div>
 
-                          let badgeColor = 'bg-gray-500/10 text-gray-400 border-gray-500/20';
-                          let typeLabel = 'Contact';
-                          if (req.type === 'bug') {
-                            badgeColor = 'bg-destructive/10 text-destructive border-destructive/20';
-                            typeLabel = 'Bug';
-                          } else if (req.type === 'request') {
-                            badgeColor = 'bg-accent/10 text-accent border-accent/20';
-                            typeLabel = 'Request';
-                          }
+                    <select
+                      value={postChannelFilter}
+                      onChange={e => { setPostChannelFilter(e.target.value); setPage(1); }}
+                      className="px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white outline-none focus:border-accent"
+                    >
+                      <option value="all">All Channels ({channels.length})</option>
+                      {channels.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
 
-                          return (
-                            <tr key={req.key} className="hover:bg-secondary/20 transition-colors">
-                              <td className="px-6 py-4 text-xs text-muted-foreground align-top whitespace-nowrap">
-                                {dateStr}
-                              </td>
-                              <td className="px-6 py-4 align-top">
-                                <div className="font-semibold text-foreground">{req.fullName}</div>
-                                <a
-                                  href={`mailto:${req.email}`}
-                                  className="text-xs text-accent hover:underline break-all block mt-0.5"
-                                >
-                                  {req.email}
-                                </a>
-                              </td>
-                              <td className="px-6 py-4 align-top">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${badgeColor}`}>
-                                  {typeLabel}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 align-top">
-                                <div className="text-foreground leading-relaxed whitespace-pre-wrap max-w-2xl break-words">
-                                  {req.cleanDescription}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 text-center align-top">
+                    <select
+                      value={postCategoryFilter}
+                      onChange={e => { setPostCategoryFilter(e.target.value); setPage(1); }}
+                      className="px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white outline-none focus:border-accent"
+                    >
+                      <option value="all">All Categories ({categories.length})</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Post Table / Cards View */}
+                  <div className="bg-[#12131a]/90 border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+                    
+                    {/* Mobile Post Cards View (visible on screen < sm) */}
+                    <div className="sm:hidden divide-y divide-white/5 p-2">
+                      {paginatedPosts.map(post => {
+                        const isSelected = selectedPosts.includes(post.id);
+                        return (
+                          <div 
+                            key={post.id}
+                            className={`p-3 rounded-xl transition-all ${
+                              isSelected ? 'bg-accent/10 border border-accent/30' : 'hover:bg-white/[0.02]'
+                            }`}
+                          >
+                            <div className="flex gap-3">
+                              <div className="relative w-28 aspect-video rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
+                                <img 
+                                  src={buildThumbnailUrl(post.thumbnail)} 
+                                  alt={post.title}
+                                  className="w-full h-full object-cover"
+                                  onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                                />
                                 <button
-                                  onClick={() => handleDeleteSupport(req.key)}
-                                  className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-all inline-flex items-center justify-center"
-                                  title="Delete Message"
+                                  onClick={() => {
+                                    if (isSelected) setSelectedPosts(prev => prev.filter(id => id !== post.id));
+                                    else setSelectedPosts(prev => [...prev, post.id]);
+                                  }}
+                                  className="absolute top-1.5 left-1.5 p-1 rounded-lg bg-black/70 backdrop-blur-md text-white"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-accent" /> : <Square className="w-3.5 h-3.5" />}
                                 </button>
+                              </div>
+                              <div className="min-w-0 flex-1 flex flex-col justify-between">
+                                <div>
+                                  <h4 className="text-xs font-bold text-white line-clamp-2">{post.title}</h4>
+                                  <p className="text-[10px] text-gray-400 mt-1 truncate">
+                                    {post.channelName || 'No channel'} • {post.category || 'No category'}
+                                  </p>
+                                </div>
+                                <div className="flex items-center justify-end gap-1.5 mt-2">
+                                  <button
+                                    onClick={() => handleOpenEditPost(post)}
+                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
+                                    title="Edit"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeletePost(post.id, post.title)}
+                                    className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {paginatedPosts.length === 0 && (
+                        <div className="p-8 text-center text-muted-foreground text-xs">
+                          No matching posts found.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Desktop Table View (hidden on mobile, visible on sm+) */}
+                    <div className="hidden sm:block overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white/[0.03] border-b border-white/10 text-gray-400 uppercase font-semibold tracking-wider">
+                          <tr>
+                            <th className="p-4 w-12 text-center">
+                              <button
+                                onClick={() => {
+                                  if (selectedPosts.length === paginatedPosts.length) {
+                                    setSelectedPosts([]);
+                                  } else {
+                                    setSelectedPosts(paginatedPosts.map(p => p.id));
+                                  }
+                                }}
+                                className="text-gray-400 hover:text-white"
+                              >
+                                {selectedPosts.length > 0 && selectedPosts.length === paginatedPosts.length ? (
+                                  <CheckSquare className="w-4 h-4 text-accent" />
+                                ) : (
+                                  <Square className="w-4 h-4" />
+                                )}
+                              </button>
+                            </th>
+                            <th className="p-4">Video</th>
+                            <th className="p-4 hidden sm:table-cell">Channel</th>
+                            <th className="p-4 hidden md:table-cell">Categories</th>
+                            <th className="p-4 hidden lg:table-cell">Actors</th>
+                            <th className="p-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {paginatedPosts.map(post => {
+                            const isSelected = selectedPosts.includes(post.id);
+                            return (
+                              <tr 
+                                key={post.id} 
+                                className={`hover:bg-white/[0.02] transition-colors ${isSelected ? 'bg-accent/10' : ''}`}
+                              >
+                                <td className="p-4 text-center">
+                                  <button
+                                    onClick={() => {
+                                      if (isSelected) setSelectedPosts(prev => prev.filter(id => id !== post.id));
+                                      else setSelectedPosts(prev => [...prev, post.id]);
+                                    }}
+                                    className="text-gray-400 hover:text-white"
+                                  >
+                                    {isSelected ? (
+                                      <CheckSquare className="w-4 h-4 text-accent" />
+                                    ) : (
+                                      <Square className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="p-4">
+                                  <div className="flex items-center gap-3">
+                                    <img 
+                                      src={buildThumbnailUrl(post.thumbnail)} 
+                                      alt={post.title} 
+                                      className="w-16 h-10 rounded-lg object-cover bg-white/5 flex-shrink-0"
+                                      onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                                    />
+                                    <div className="min-w-0 max-w-sm">
+                                      <p className="font-semibold text-white truncate">{post.title}</p>
+                                      <p className="text-[11px] text-gray-500 font-mono mt-0.5 truncate">
+                                        ID: {post.id}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="p-4 hidden sm:table-cell">
+                                  <span className="px-2.5 py-1 rounded-md bg-white/5 border border-white/5 text-gray-300 font-medium">
+                                    {post.channelName || '—'}
+                                  </span>
+                                </td>
+                                <td className="p-4 hidden md:table-cell">
+                                  <div className="flex flex-wrap gap-1 max-w-xs">
+                                    {(post.categories && post.categories.length > 0) ? (
+                                      post.categories.map(c => (
+                                        <span key={c} className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px]">
+                                          {c}
+                                        </span>
+                                      ))
+                                    ) : post.category ? (
+                                      <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px]">
+                                        {post.category}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-500 text-[11px]">—</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-4 hidden lg:table-cell">
+                                  <div className="flex flex-wrap gap-1 max-w-xs">
+                                    {post.actors && post.actors.length > 0 ? (
+                                      post.actors.map(a => (
+                                        <span key={a} className="px-2 py-0.5 rounded bg-pink-500/10 text-pink-300 border border-pink-500/20 text-[10px]">
+                                          {a}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-gray-500 text-[11px]">—</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-4 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => handleOpenEditPost(post)}
+                                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
+                                      title="Edit Post"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePost(post.id, post.title)}
+                                      className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                                      title="Delete Post"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {paginatedPosts.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="p-12 text-center text-muted-foreground text-xs">
+                                No matching posts found.
                               </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination Bar */}
+                    {totalPages > 1 && (
+                      <div className="p-4 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
+                        <span>Showing {paginatedPosts.length} of {filteredPosts.length} posts</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30"
+                          >
+                            Prev
+                          </button>
+                          <span className="px-3 py-1.5 font-mono text-white">Page {page} of {totalPages}</span>
+                          <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-Tab 2B: Streamtape Cloud Library */}
+              {postSubTab === 'streamtape' && (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#12131a]/80 border border-white/10 p-4 rounded-2xl">
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={streamtapeSearch}
+                        onChange={e => setStreamtapeSearch(e.target.value)}
+                        placeholder="Search cloud videos..."
+                        className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder:text-gray-500 outline-none focus:border-accent"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400">
+                        Un-imported: <strong className="text-white font-mono">{streamtapeVideos.length}</strong>
+                      </span>
+                      <button
+                        onClick={handleFetchStreamtape}
+                        disabled={fetchingStreamtape}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/25 transition-all active:scale-95 disabled:opacity-50"
+                      >
+                        <DownloadCloud className={`w-4 h-4 ${fetchingStreamtape ? 'animate-bounce' : ''}`} />
+                        <span>{fetchingStreamtape ? 'Fetching from Cloud...' : 'Fetch Streamtape'}</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Mobile & Tablet Card View (Hidden on large screens) */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden">
-                    {sorted.map(req => {
-                      const dateStr = new Date(req.createdAt).toLocaleString(undefined, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short'
-                      });
+                  {filteredStreamtape.length === 0 ? (
+                    <div className="bg-[#12131a]/80 border border-white/10 rounded-2xl p-12 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
+                        <DownloadCloud className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-bold text-white">Streamtape Cloud On-Demand</h4>
+                      <p className="text-xs text-gray-400 max-w-md mx-auto">
+                        Click <strong>"Fetch Streamtape"</strong> above to load new un-imported videos from your Streamtape account. Otherwise, it stays inactive to keep performance blazing fast.
+                      </p>
+                      <button
+                        onClick={handleFetchStreamtape}
+                        disabled={fetchingStreamtape}
+                        className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-accent/25"
+                      >
+                        {fetchingStreamtape ? 'Connecting...' : 'Fetch Streamtape Now'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {filteredStreamtape.map(v => {
+                        const isSelected = selectedStreamtape.includes(v.videoId);
+                        const loadingThis = actionLoading[`st_${v.videoId}`];
 
-                      let badgeColor = 'bg-gray-500/10 text-gray-400 border-gray-500/20';
-                      let typeLabel = 'Contact';
-                      if (req.type === 'bug') {
-                        badgeColor = 'bg-destructive/10 text-destructive border-destructive/20';
-                        typeLabel = 'Bug';
-                      } else if (req.type === 'request') {
-                        badgeColor = 'bg-accent/10 text-accent border-accent/20';
-                        typeLabel = 'Request';
-                      }
+                        return (
+                          <div 
+                            key={v.videoId} 
+                            className={`bg-[#12131a]/80 border rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-all ${
+                              isSelected ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <div className="space-y-2.5">
+                              <div className="relative aspect-video rounded-xl overflow-hidden bg-black/40 border border-white/5">
+                                <img 
+                                  src={v.thumbnail} 
+                                  alt={v.title}
+                                  className="w-full h-full object-cover"
+                                  onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (isSelected) setSelectedStreamtape(prev => prev.filter(id => id !== v.videoId));
+                                    else setSelectedStreamtape(prev => [...prev, v.videoId]);
+                                  }}
+                                  className="absolute top-2 left-2 p-1 rounded-lg bg-black/60 backdrop-blur-md text-white hover:scale-110 transition-transform"
+                                >
+                                  {isSelected ? (
+                                    <CheckSquare className="w-4 h-4 text-accent" />
+                                  ) : (
+                                    <Square className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
 
-                      return (
-                        <div
-                          key={req.key}
-                          className="bg-card border border-border rounded-xl p-5 hover:border-border/80 transition-all flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeColor}`}>
-                                {typeLabel}
-                              </span>
-                              <span className="text-[11px] text-muted-foreground">{dateStr}</span>
+                              <div>
+                                <h4 className="text-xs font-bold text-white line-clamp-2">{v.title}</h4>
+                                <p className="text-[10px] text-gray-400 font-mono mt-1">ID: {v.videoId}</p>
+                              </div>
                             </div>
-                            <h4 className="font-bold text-foreground leading-tight">{req.fullName}</h4>
-                            <a
-                              href={`mailto:${req.email}`}
-                              className="text-xs text-accent hover:underline inline-block mb-3.5"
-                            >
-                              {req.email}
-                            </a>
-                            <div className="text-xs text-foreground/90 whitespace-pre-wrap leading-relaxed border-t border-border/30 pt-3 break-words">
-                              {req.cleanDescription}
+
+                            <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                              <span className="text-[10px] text-gray-500">
+                                {(v.size / (1024 * 1024)).toFixed(1)} MB
+                              </span>
+                              <button
+                                onClick={() => handleImportStreamtapeSingle(v)}
+                                disabled={loadingThis}
+                                className="px-3 py-1.5 rounded-lg bg-accent/20 hover:bg-accent text-accent hover:text-white border border-accent/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {loadingThis ? (
+                                  <Loader size="small" />
+                                ) : (
+                                  <>
+                                    <DownloadCloud className="w-3.5 h-3.5" />
+                                    <span>Import</span>
+                                  </>
+                                )}
+                              </button>
                             </div>
                           </div>
-                          <div className="flex justify-end border-t border-border/30 pt-3 mt-4">
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              TAB 3: CHANNELS MANAGEMENT
+          ────────────────────────────────────────────────────────────────── */}
+          {tab === 'channels' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#12131a]/80 border border-white/10 p-4 rounded-2xl">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={channelSearch}
+                    onChange={e => setChannelSearch(e.target.value)}
+                    placeholder="Search channels..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder:text-gray-500 outline-none focus:border-accent"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setForm({ bulkNames: '' }); setModal({ type: 'bulk-channel', mode: 'add' }); }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 rounded-xl text-xs font-semibold transition-all"
+                  >
+                    <FolderPlus className="w-4 h-4 text-accent" />
+                    <span>Bulk Add</span>
+                  </button>
+                  <button
+                    onClick={handleOpenAddChannel}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold shadow-lg shadow-accent/25 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>New Channel</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredChannels.map(ch => {
+                  const isSelected = selectedChannels.includes(ch.id);
+                  const channelPostsCount = posts.filter(p => p.channelName === ch.name).length;
+
+                  return (
+                    <div 
+                      key={ch.id}
+                      className={`bg-[#12131a]/80 border rounded-2xl p-5 flex flex-col justify-between space-y-4 transition-all ${
+                        isSelected ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
                             <button
-                              onClick={() => handleDeleteSupport(req.key)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-xs font-bold hover:bg-destructive/20 transition-all"
+                              onClick={() => {
+                                if (isSelected) setSelectedChannels(prev => prev.filter(id => id !== ch.id));
+                                else setSelectedChannels(prev => [...prev, ch.id]);
+                              }}
+                              className="text-gray-400 hover:text-white"
                             >
-                              <Trash2 className="w-3.5 h-3.5" /> Dismiss Message
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-accent" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
                             </button>
+
+                            <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center font-bold text-lg text-accent">
+                              {ch.logo ? (
+                                <img src={ch.logo} alt={ch.name} className="w-full h-full object-cover" />
+                              ) : (
+                                ch.name[0]
+                              )}
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                                {ch.name}
+                                {ch.verified && <ShieldCheck className="w-3.5 h-3.5 text-accent" />}
+                              </h3>
+                              <p className="text-[11px] text-gray-400">@{ch.handle || ch.name.toLowerCase().replace(/\s+/g, '')}</p>
+                            </div>
                           </div>
                         </div>
-                      );
-                    })}
+
+                        {ch.description && (
+                          <p className="text-xs text-gray-400 line-clamp-2">{ch.description}</p>
+                        )}
+                      </div>
+
+                      <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                        <span className="px-2.5 py-1 rounded-md bg-white/5 text-[11px] text-gray-300 font-mono">
+                          {channelPostsCount} video(s)
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleOpenEditChannel(ch)}
+                            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteChannel(ch.id, ch.name)}
+                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              TAB 4: ACTORS MANAGEMENT (WITH INTERACTIVE CROP FOCUS TOOL)
+          ────────────────────────────────────────────────────────────────── */}
+          {tab === 'actors' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#12131a]/80 border border-white/10 p-4 rounded-2xl">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={actorSearch}
+                    onChange={e => setActorSearch(e.target.value)}
+                    placeholder="Search actors..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder:text-gray-500 outline-none focus:border-accent"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setForm({ bulkNames: '' }); setModal({ type: 'bulk-actor', mode: 'add' }); }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 rounded-xl text-xs font-semibold transition-all"
+                  >
+                    <FolderPlus className="w-4 h-4 text-accent" />
+                    <span>Bulk Add</span>
+                  </button>
+                  <button
+                    onClick={handleOpenAddActor}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold shadow-lg shadow-accent/25 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>New Actor</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                {filteredActors.map(actor => {
+                  const isSelected = selectedActors.includes(actor.id);
+                  const actorPostsCount = posts.filter(p => (p.actors || []).includes(actor.name)).length;
+
+                  return (
+                    <div 
+                      key={actor.id}
+                      className={`bg-[#12131a]/80 border rounded-2xl p-4 flex flex-col items-center text-center justify-between space-y-3 transition-all relative ${
+                        isSelected ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      <button
+                        onClick={() => {
+                          if (isSelected) setSelectedActors(prev => prev.filter(id => id !== actor.id));
+                          else setSelectedActors(prev => [...prev, actor.id]);
+                        }}
+                        className="absolute top-3 left-3 text-gray-400 hover:text-white"
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="w-4 h-4 text-accent" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      <div className="w-20 h-20 rounded-full bg-white/5 border-2 border-white/10 overflow-hidden mt-2 relative">
+                        {actor.image ? (
+                          <div 
+                            className="w-full h-full"
+                            style={{
+                              backgroundImage: `url(${actor.image})`,
+                              backgroundSize: `${Math.round((actor.cropZoom ?? 1) * 100)}%`,
+                              backgroundPosition: `${actor.cropX ?? 50}% ${actor.cropY ?? 50}%`,
+                              backgroundRepeat: 'no-repeat',
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center font-bold text-xl text-accent">
+                            {actor.name[0]}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs font-bold text-white truncate max-w-[130px]">{actor.name}</h4>
+                        <p className="text-[10px] text-gray-500 font-mono mt-0.5">{actorPostsCount} videos</p>
+                      </div>
+
+                      <div className="w-full pt-2 border-t border-white/5 flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditActor(actor)}
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
+                          title="Edit"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteActor(actor.id, actor.name)}
+                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              TAB 5: CATEGORIES MANAGEMENT
+          ────────────────────────────────────────────────────────────────── */}
+          {tab === 'categories' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#12131a]/80 border border-white/10 p-4 rounded-2xl">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={categorySearch}
+                    onChange={e => setCategorySearch(e.target.value)}
+                    placeholder="Search categories..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder:text-gray-500 outline-none focus:border-accent"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setForm({ bulkNames: '' }); setModal({ type: 'bulk-category', mode: 'add' }); }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 rounded-xl text-xs font-semibold transition-all"
+                  >
+                    <FolderPlus className="w-4 h-4 text-accent" />
+                    <span>Bulk Add</span>
+                  </button>
+                  <button
+                    onClick={handleOpenAddCategory}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold shadow-lg shadow-accent/25 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>New Category</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {filteredCategories.map(cat => {
+                  const isSelected = selectedCategories.includes(cat.id);
+                  const catPostsCount = posts.filter(p => (p.categories || []).includes(cat.name) || p.category === cat.name).length;
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                        isSelected 
+                          ? 'bg-accent/15 border-accent shadow-lg shadow-accent/20' 
+                          : 'bg-[#12131a]/80 border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <button
+                          onClick={() => {
+                            if (isSelected) setSelectedCategories(prev => prev.filter(id => id !== cat.id));
+                            else setSelectedCategories(prev => [...prev, cat.id]);
+                          }}
+                          className="text-gray-400 hover:text-white"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-accent" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-white truncate">{cat.name}</h4>
+                          <span className="text-[10px] text-gray-400 font-mono">{catPostsCount} posts</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleOpenEditCategory(cat)}
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white"
+                          title="Edit"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                          className="p-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              TAB 6: PLAYER SETTINGS
+          ────────────────────────────────────────────────────────────────── */}
+          {tab === 'player-settings' && (
+            <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-200">
+              <div className="bg-[#12131a]/90 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-white">Player & Streaming Settings</h3>
+                  <p className="text-xs text-gray-400 mt-1">Configure playback behaviors and primary streaming servers across the platform.</p>
+                </div>
+
+                {/* Auto Play Toggle */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                  <div>
+                    <label className="text-xs font-bold text-white block">Auto-Play Videos</label>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Automatically begin video streaming when users open watch pages.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPlayerSettings(prev => ({ ...prev, autoPlay: !prev.autoPlay }))}
+                    className={`w-12 h-6 rounded-full transition-colors relative flex items-center p-0.5 ${
+                      playerSettings.autoPlay ? 'bg-accent shadow-md shadow-accent/30' : 'bg-white/10'
+                    }`}
+                  >
+                    <span 
+                      className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        playerSettings.autoPlay ? 'translate-x-6' : 'translate-x-0'
+                      }`} 
+                    />
+                  </button>
+                </div>
+
+                {/* Default Server */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-white block uppercase tracking-wider">Default Streaming Server</label>
+                  <p className="text-[11px] text-gray-400">Select which server takes top priority for viewers.</p>
+                  
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setPlayerSettings(prev => ({ ...prev, defaultServer: 'SERVER_01' }))}
+                      className={`p-4 rounded-xl border text-left transition-all ${
+                        playerSettings.defaultServer === 'SERVER_01'
+                          ? 'bg-accent/15 border-accent text-white shadow-lg shadow-accent/20'
+                          : 'bg-white/[0.02] border-white/10 text-gray-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-xs font-bold block text-white">SERVER 01</span>
+                      <span className="text-[11px] text-accent font-medium mt-0.5 block">Streamtape (Primary)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPlayerSettings(prev => ({ ...prev, defaultServer: 'SERVER_02' }))}
+                      className={`p-4 rounded-xl border text-left transition-all ${
+                        playerSettings.defaultServer === 'SERVER_02'
+                          ? 'bg-accent/15 border-accent text-white shadow-lg shadow-accent/20'
+                          : 'bg-white/[0.02] border-white/10 text-gray-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-xs font-bold block text-white">SERVER 02</span>
+                      <span className="text-[11px] text-purple-400 font-medium mt-0.5 block">Secondary Stream</span>
+                    </button>
                   </div>
                 </div>
-              );
-            })()}
-          </div>
-        )}
-      </div>
 
-      {/* Modals */}
-      <Modal open={modal?.type === 'post'} onClose={() => { setModal(null); setFetchedThumbnail(null); }} title={modal?.mode === 'edit' ? 'Edit Post' : 'Add Post'}>
-        <Field label="Title" value={form.title || ''} onChange={v => setForm({ ...form, title: v })} />
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Thumbnail Path</label>
-          <div className="flex gap-2">
-            <input 
-              value={form.thumbnail || ''} 
-              onChange={e => setForm({ ...form, thumbnail: e.target.value })} 
-              placeholder="/Kq3k4aG2NdH715EJVKCn7g/ox/9dr5kx6z/3ghr5r/capture-169616.jpg"
-              className="flex-1 px-3 py-2 bg-background border border-border rounded-[8px] text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            {form.thumbnail && (
-              <img 
-                src={buildThumbnailUrl(form.thumbnail)} 
-                alt="Thumbnail preview" 
-                className="w-16 h-9 rounded-[8px] object-cover border border-border"
-                onError={(e) => {
-                  e.currentTarget.src = 'https://via.placeholder.com/160x90?text=No+Thumbnail';
+                {playerSettings.updatedAt && (
+                  <p className="text-[11px] text-gray-500 font-mono">
+                    Last modified: {new Date(playerSettings.updatedAt).toLocaleString()}
+                  </p>
+                )}
+
+                <button
+                  onClick={handleSavePlayerSettings}
+                  disabled={actionLoading.savePlayer}
+                  className="w-full py-3 bg-accent hover:bg-accent/90 text-white font-bold rounded-xl text-xs shadow-xl shadow-accent/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {actionLoading.savePlayer ? <Loader size="small" /> : 'Save Player Settings'}
+                </button>
+              </div>
+
+              {/* Database Health & Maintenance Card */}
+              <div className="bg-[#12131a]/80 border border-emerald-500/30 rounded-2xl p-6 space-y-5 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        Database Health & Maintenance
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.5 rounded-md border border-emerald-500/30">
+                          Fast & Verified
+                        </span>
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Clean video titles, strip file extensions, verify Streamtape thumbnails, and optimize database indexing.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Total Posts in DB</span>
+                    <span className="text-base font-bold text-white font-mono">{posts.length}</span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">CDN Thumbnails</span>
+                    <span className="text-base font-bold text-emerald-400 font-mono">100% Active</span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Database Status</span>
+                    <span className="text-base font-bold text-accent font-mono">Healthy</span>
+                  </div>
+                </div>
+
+                {optimizationResult && (
+                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-2 animate-in fade-in">
+                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4" /> Maintenance Succeeded:
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-gray-300 font-mono">
+                      <div>Scanned: <strong className="text-white">{optimizationResult.totalPostsScanned}</strong></div>
+                      <div>Updated: <strong className="text-emerald-300">{optimizationResult.totalPostsCompacted}</strong></div>
+                      <div>Thumbs Restored: <strong className="text-white">{optimizationResult.thumbsCompacted}</strong></div>
+                      <div>Status: <strong className="text-emerald-400">{optimizationResult.estimatedSpaceSaved}</strong></div>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleOptimizeDatabase}
+                  disabled={optimizingDB}
+                  className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-98"
+                >
+                  {optimizingDB ? (
+                    <Loader size="small" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Run Database Maintenance & Verify Thumbnails</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </main>
+
+      {/* ── Floating Bulk Actions Bar ───────────────────────────────────────── */}
+      {(selectedPosts.length > 0 || selectedChannels.length > 0 || selectedActors.length > 0 || selectedCategories.length > 0 || selectedStreamtape.length > 0) && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#12131a]/95 border border-accent/40 rounded-2xl px-5 py-3 shadow-2xl shadow-purple-950/80 backdrop-blur-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 duration-200">
+          
+          {/* Post Bulk Actions */}
+          {tab === 'posts' && postSubTab === 'all' && selectedPosts.length > 0 && (
+            <>
+              <span className="text-xs font-bold text-white font-mono bg-accent/20 px-2.5 py-1 rounded-lg border border-accent/30">
+                {selectedPosts.length} selected
+              </span>
+              <button
+                onClick={() => {
+                  setForm({ bulkChannelId: '' });
+                  setFormCategories([]);
+                  setModal({ type: 'bulk-post-assign', mode: 'edit' });
                 }}
-              />
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">Enter path only (e.g., /path/to/capture.jpg). Full URL will be built automatically.</p>
-        </div>
-        <TextAreaField label="Description" value={form.description || ''} onChange={v => setForm({ ...form, description: v })} placeholder="Enter video description..." />
-        <SearchSelect label="Channel Name" value={form.channelName || ''} onChange={v => setForm({ ...form, channelName: v })}
-          options={chs.map(c => c.name)} placeholder="Search channels..." />
-        <ActorMultiSelect selected={formActors} onChange={setFormActors} options={acts.map(a => a.name)} />
-        <CategoryMultiSelect selected={formCategories} onChange={setFormCategories} options={cats.filter(c => c.id !== 'all').map(c => c.name)} />
+                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all flex items-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5 text-accent" />
+                <span>Bulk Assign</span>
+              </button>
+              <button
+                onClick={handleBulkDeletePosts}
+                disabled={actionLoading.bulkDeletePosts}
+                className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {actionLoading.bulkDeletePosts ? <Loader size="small" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Delete ({selectedPosts.length})</span>
+              </button>
+              <button 
+                onClick={() => setSelectedPosts([])}
+                className="p-1 rounded-lg text-gray-400 hover:text-white"
+                title="Clear selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
 
-        {/* ── Video Source IDs (Seekstreaming + Streamtape) ── */}
-        <div className="mb-3 mt-1">
-          <label className="text-sm font-medium text-foreground block mb-1">Video Sources</label>
-          <p className="text-xs text-muted-foreground mb-2">Add video IDs for each server. Fill in both for server switching.</p>
-          
-          {/* SERVER 01 - Seekstreaming */}
-          <div className="flex items-center gap-2 mb-2">
-            <div className="text-xs font-semibold text-purple-400 w-[100px] flex-shrink-0">
-              <span className="block">SERVER 01</span>
-              <span className="block text-[10px] opacity-70">Seekstreaming</span>
-            </div>
-            <input
-              value={form.vid_seekstreaming || ''}
-              onChange={e => setForm({ ...form, vid_seekstreaming: e.target.value })}
-              placeholder="Seekstreaming video ID"
-              className="flex-1 px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
-            />
-          </div>
-          
-          {/* SERVER 02 - Streamtape */}
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-semibold text-blue-400 w-[100px] flex-shrink-0">
-              <span className="block">SERVER 02</span>
-              <span className="block text-[10px] opacity-70">Streamtape</span>
-            </div>
-            <input
-              value={form.vid_streamtape || ''}
-              onChange={e => setForm({ ...form, vid_streamtape: e.target.value })}
-              placeholder="Streamtape video ID"
-              className="flex-1 px-3 py-1.5 bg-secondary rounded-[20px] text-foreground text-xs outline-none focus:ring-2 focus:ring-ring border border-border"
-            />
-          </div>
-        </div>
+          {/* Streamtape Bulk Actions */}
+          {tab === 'posts' && postSubTab === 'streamtape' && selectedStreamtape.length > 0 && (
+            <>
+              <span className="text-xs font-bold text-white font-mono bg-blue-500/20 px-2.5 py-1 rounded-lg border border-blue-500/30">
+                {selectedStreamtape.length} selected
+              </span>
+              <button
+                onClick={() => {
+                  setForm({ bulkStreamtapeChannelId: channels[0]?.id || '' });
+                  setFormCategories([]);
+                  setModal({ type: 'bulk-streamtape', mode: 'add' });
+                }}
+                className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all flex items-center gap-1.5"
+              >
+                <DownloadCloud className="w-3.5 h-3.5" />
+                <span>Import Selected</span>
+              </button>
+              <button 
+                onClick={() => setSelectedStreamtape([])}
+                className="p-1 rounded-lg text-gray-400 hover:text-white"
+                title="Clear selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
 
-        <button onClick={handleSavePost} disabled={isSaving} className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 min-h-[40px]">
-          {isSaving ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Post')}
-        </button>
-      </Modal>
+          {/* Channel Bulk Actions */}
+          {tab === 'channels' && selectedChannels.length > 0 && (
+            <>
+              <span className="text-xs font-bold text-white font-mono bg-accent/20 px-2.5 py-1 rounded-lg border border-accent/30">
+                {selectedChannels.length} selected
+              </span>
+              <button
+                onClick={handleBulkDeleteChannels}
+                disabled={actionLoading.bulkDeleteChannels}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {actionLoading.bulkDeleteChannels ? <Loader size="small" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Delete Selected</span>
+              </button>
+              <button 
+                onClick={() => setSelectedChannels([])}
+                className="p-1 rounded-lg text-gray-400 hover:text-white"
+                title="Clear selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
 
-      {/* ── Bulk Actions Modal ── */}
-      <Modal open={modal?.type === 'bulk'} onClose={() => setModal(null)} title={`Bulk Edit (${selectedIds.size} posts)`}>
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {(['channel', 'category', 'actors'] as const).map(a => (
-            <button key={a} onClick={() => setBulkAction(a)}
-              className={`px-3 py-1.5 rounded-[20px] text-xs font-medium transition-colors ${bulkAction === a ? 'bg-accent text-white' : 'bg-secondary text-secondary-foreground hover:bg-tertiary'}`}>
-              {a === 'channel' ? 'Change Channel' : a === 'category' ? 'Change Category' : 'Change Actors'}
-            </button>
-          ))}
+          {/* Actor Bulk Actions */}
+          {tab === 'actors' && selectedActors.length > 0 && (
+            <>
+              <span className="text-xs font-bold text-white font-mono bg-accent/20 px-2.5 py-1 rounded-lg border border-accent/30">
+                {selectedActors.length} selected
+              </span>
+              <button
+                onClick={handleBulkDeleteActors}
+                disabled={actionLoading.bulkDeleteActors}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {actionLoading.bulkDeleteActors ? <Loader size="small" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Delete Selected</span>
+              </button>
+              <button 
+                onClick={() => setSelectedActors([])}
+                className="p-1 rounded-lg text-gray-400 hover:text-white"
+                title="Clear selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
+          {/* Category Bulk Actions */}
+          {tab === 'categories' && selectedCategories.length > 0 && (
+            <>
+              <span className="text-xs font-bold text-white font-mono bg-accent/20 px-2.5 py-1 rounded-lg border border-accent/30">
+                {selectedCategories.length} selected
+              </span>
+              <button
+                onClick={handleBulkDeleteCategories}
+                disabled={actionLoading.bulkDeleteCategories}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {actionLoading.bulkDeleteCategories ? <Loader size="small" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Delete Selected</span>
+              </button>
+              <button 
+                onClick={() => setSelectedCategories([])}
+                className="p-1 rounded-lg text-gray-400 hover:text-white"
+                title="Clear selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
         </div>
-        {bulkAction === 'channel' && (
-          <SearchSelect label="New Channel for selected posts" value={bulkChannel} onChange={setBulkChannel}
-            options={chs.map(c => c.name)} placeholder="Search channels..." />
-        )}
-        {bulkAction === 'category' && (
-          <CategoryMultiSelect
-            selected={bulkCategories}
-            onChange={setBulkCategories}
-            options={cats.filter(c => c.name && c.name.toLowerCase() !== 'uncategorized').map(c => c.name)}
+      )}
+
+      {/* ── MODALS ────────────────────────────────────────────────────────── */}
+
+      {/* Modal 1: Add / Edit Post */}
+      <Modal
+        open={modal?.type === 'post'}
+        onClose={() => setModal(null)}
+        title={modal?.mode === 'edit' ? 'Edit Video Post' : 'Create New Video Post'}
+        subtitle="Changes are synced directly with Supabase"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <Field
+            label="Video Title"
+            value={form.title || ''}
+            onChange={v => setForm({ ...form, title: v })}
+            placeholder="e.g. Action Blockbuster 2026"
           />
-        )}
-        {bulkAction === 'actors' && (
-          <ActorMultiSelect selected={bulkActors} onChange={setBulkActors} options={acts.map(a => a.name)} />
-        )}
-        <button onClick={async () => {
-          if (bulkAction === 'delete') {
-            await handleBulkDelete();
-          } else {
-            await handleBulkUpdate();
-          }
-        }} disabled={isBulkSaving} className={`w-full mt-4 py-2 rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 min-h-[40px] ${
-          bulkAction === 'delete' ? 'bg-destructive text-white' : 'bg-primary text-primary-foreground'
-        }`}>
-          {isBulkSaving ? <Loader size="small" /> : (bulkAction === 'delete' ? `Delete ${selectedIds.size} Posts` : `Apply to ${selectedIds.size} Posts`)}
-        </button>
-      </Modal>
 
-      <Modal open={modal?.type === 'channel'} onClose={() => setModal(null)} title={modal?.mode === 'edit' ? 'Edit Channel' : 'Add Channel'}>
-        <Field label="Name" value={form.name || ''} onChange={v => setForm({ ...form, name: v })} />
-        <Field label="Handle" value={form.handle || ''} onChange={v => setForm({ ...form, handle: v })} placeholder="@handle" />
-        <Field label="Logo URL" value={form.logo || ''} onChange={v => setForm({ ...form, logo: v })} />
-        <Field label="Banner URL" value={form.banner || ''} onChange={v => setForm({ ...form, banner: v })} />
-        <TextAreaField label="Description" value={form.description || ''} onChange={v => setForm({ ...form, description: v })} placeholder="Enter video description..." />
-        <button onClick={async () => {
-          setButtonLoading(prev => ({ ...prev, saveChannel: true }));
-          await handleSaveChannel();
-          setButtonLoading(prev => ({ ...prev, saveChannel: false }));
-        }}
-          disabled={buttonLoading.saveChannel}
-          className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center min-h-[40px]">
-          {buttonLoading.saveChannel ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Channel')}
-        </button>
-      </Modal>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field
+              label="Streamtape Video ID"
+              value={form.videoId || ''}
+              onChange={v => setForm({ ...form, videoId: v })}
+              placeholder="e.g. xY78AbC9..."
+              hint="Streamtape video/embed link ID"
+            />
 
-      <Modal open={modal?.type === 'actor'} onClose={() => setModal(null)} title={modal?.mode === 'edit' ? 'Edit Actor' : 'Add Actor'}>
-        <Field label="Name" value={form.name || ''} onChange={v => setForm({ ...form, name: v })} />
-        <Field label="Image URL" value={form.image || ''} onChange={v => setForm({ ...form, image: v })} placeholder="https://..." />
+            <SearchSelect
+              label="Channel"
+              value={form.channelName || ''}
+              onChange={name => {
+                const ch = channels.find(c => c.name === name);
+                setForm({ ...form, channelName: name, channelId: ch?.id || '' });
+              }}
+              options={channels.map(c => c.name)}
+              placeholder="Select channel..."
+            />
+          </div>
 
-        {/* Live Crop Preview */}
-        {form.image && (
-          <div className="mb-3">
-            <label className="text-sm font-medium text-foreground block mb-2">Face Crop Preview</label>
-            <div className="flex flex-col items-center gap-4">
-              {/* Circular crop preview */}
-              <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', border: '3px solid var(--border)', flexShrink: 0, background: 'var(--secondary)' }}>
-                <div style={{
-                  width: '100%', height: '100%',
-                  backgroundImage: `url(${form.image})`,
-                  backgroundSize: `${Math.round((Number(form.cropZoom) || 1) * 100)}%`,
-                  backgroundPosition: `${form.cropX ?? 50}% ${form.cropY ?? 50}%`,
-                  backgroundRepeat: 'no-repeat',
-                }} />
+          <Field
+            label="Thumbnail URL (Optional)"
+            value={form.thumbnail || ''}
+            onChange={v => setForm({ ...form, thumbnail: v })}
+            placeholder="https://..."
+            hint="Leave empty to use automatic Streamtape thumbnail"
+          />
+
+          <CategorySearchPicker
+            label="Categories"
+            options={categories.map(c => ({ id: c.id, name: c.name }))}
+            selected={formCategories}
+            onChange={setFormCategories}
+          />
+
+          <ActorSearchPicker
+            label="Actors"
+            existingActors={actors}
+            selectedActors={formActors}
+            onChange={setFormActors}
+          />
+
+          {/* Description Section with AI Generator Trigger */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">Description</label>
+              <button
+                type="button"
+                onClick={handleGenerateDescription}
+                disabled={isGeneratingDesc || !form.title?.trim()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600/30 to-pink-600/30 hover:from-purple-600 hover:to-pink-600 text-purple-200 hover:text-white border border-purple-500/30 text-xs font-bold shadow-md shadow-purple-500/10 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+              >
+                {isGeneratingDesc ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-300" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-pink-400 group-hover:scale-110 transition-transform" />
+                )}
+                <span>Generate Description</span>
+              </button>
+            </div>
+
+            {/* AI Generated 4 Options Panel */}
+            {descOptions && (
+              <div className="p-3.5 bg-gradient-to-b from-purple-950/40 to-black/60 border border-purple-500/30 rounded-2xl space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between border-b border-purple-500/20 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-pink-500 animate-ping" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <Wand2 className="w-3.5 h-3.5 text-pink-400" /> 4 AI Description Options
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleGenerateDescription}
+                      disabled={isGeneratingDesc}
+                      className="text-[11px] text-purple-300 hover:text-white flex items-center gap-1 hover:underline"
+                      title="Generate new wording variations"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isGeneratingDesc ? 'animate-spin' : ''}`} />
+                      <span>Regenerate</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDescOptions(null)}
+                      className="text-gray-400 hover:text-white p-0.5 rounded-lg"
+                      title="Close options"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                  {descOptions.map((opt) => (
+                    <div
+                      key={opt.id}
+                      className="p-3 bg-black/40 hover:bg-purple-900/20 border border-white/10 hover:border-purple-500/40 rounded-xl transition-all space-y-2 group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{opt.icon}</span>
+                          <span className="text-xs font-bold text-white">{opt.label}</span>
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 text-[10px] font-semibold border border-purple-500/30">
+                            {opt.badge}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-mono">{opt.wordCount} words</span>
+                      </div>
+
+                      <p className="text-xs text-gray-300 leading-relaxed group-hover:text-white transition-colors">
+                        {opt.text}
+                      </p>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleApplyDescription(opt.text)}
+                          className="px-3 py-1.5 rounded-lg bg-pink-600/30 hover:bg-pink-600 text-pink-200 hover:text-white text-xs font-semibold border border-pink-500/30 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                        >
+                          <Check className="w-3 h-3" />
+                          <span>Apply This Description</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
+            )}
+
+            <textarea
+              value={form.description || ''}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              placeholder="Write details about the video or tap 'Generate Description' above..."
+              rows={3}
+              className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all placeholder:text-gray-500 resize-none"
+            />
+          </div>
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSavePost}
+              disabled={actionLoading.savePost}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.savePost ? <Loader size="small" /> : 'Save Post'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 2: Bulk Assign Posts */}
+      <Modal
+        open={modal?.type === 'bulk-post-assign'}
+        onClose={() => setModal(null)}
+        title={`Bulk Update ${selectedPosts.length} Selected Posts`}
+        subtitle="Batch update channel and categories in Supabase"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">Assign Channel (Optional)</label>
+            <select
+              value={form.bulkChannelId || ''}
+              onChange={e => setForm({ ...form, bulkChannelId: e.target.value })}
+              className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-accent"
+            >
+              <option value="">-- Leave channel unchanged --</option>
+              {channels.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <MultiSelectChips
+            label="Assign Categories (Optional)"
+            options={categories.map(c => ({ id: c.id, name: c.name }))}
+            selected={formCategories}
+            onChange={setFormCategories}
+          />
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkAssignPosts}
+              disabled={actionLoading.bulkAssign}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.bulkAssign ? <Loader size="small" /> : 'Apply to All Selected'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 3: Bulk Streamtape Import */}
+      <Modal
+        open={modal?.type === 'bulk-streamtape'}
+        onClose={() => setModal(null)}
+        title={`Import ${selectedStreamtape.length} Cloud Videos`}
+        subtitle="Configure default channel and categories for imported items"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider block">Assign to Channel</label>
+            <select
+              value={form.bulkStreamtapeChannelId || ''}
+              onChange={e => setForm({ ...form, bulkStreamtapeChannelId: e.target.value })}
+              className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-accent"
+            >
+              {channels.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <MultiSelectChips
+            label="Tag with Categories"
+            options={categories.map(c => ({ id: c.id, name: c.name }))}
+            selected={formCategories}
+            onChange={setFormCategories}
+          />
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkImportStreamtape}
+              disabled={actionLoading.bulkStreamtape}
+              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.bulkStreamtape ? <Loader size="small" /> : 'Start Batch Import'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 4: Channel Add / Edit */}
+      <Modal
+        open={modal?.type === 'channel'}
+        onClose={() => setModal(null)}
+        title={modal?.mode === 'edit' ? 'Edit Channel' : 'Create Channel'}
+        subtitle="Manage creator channel profile and branding"
+      >
+        <div className="space-y-4">
+          <Field
+            label="Channel Name"
+            value={form.name || ''}
+            onChange={v => setForm({ ...form, name: v })}
+            placeholder="e.g. Neon Studios"
+          />
+
+          <Field
+            label="Handle"
+            value={form.handle || ''}
+            onChange={v => setForm({ ...form, handle: v })}
+            placeholder="neonstudios"
+            hint="Unique handle used for URL routing"
+          />
+
+          <Field
+            label="Logo Image URL"
+            value={form.logo || ''}
+            onChange={v => setForm({ ...form, logo: v })}
+            placeholder="https://..."
+          />
+
+          <Field
+            label="Banner Image URL"
+            value={form.banner || ''}
+            onChange={v => setForm({ ...form, banner: v })}
+            placeholder="https://..."
+          />
+
+          <TextAreaField
+            label="Description"
+            value={form.description || ''}
+            onChange={v => setForm({ ...form, description: v })}
+            placeholder="About this channel..."
+            rows={2}
+          />
+
+          <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/10">
+            <span className="text-xs font-semibold text-gray-300">Verified Badge</span>
+            <input
+              type="checkbox"
+              checked={form.verified ?? true}
+              onChange={e => setForm({ ...form, verified: e.target.checked })}
+              className="w-4 h-4 accent-accent rounded"
+            />
+          </div>
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveChannel}
+              disabled={actionLoading.saveChannel}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.saveChannel ? <Loader size="small" /> : 'Save Channel'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 5: Actor Add / Edit (WITH INTERACTIVE CROP FOCUS TOOL) */}
+      <Modal
+        open={modal?.type === 'actor'}
+        onClose={() => setModal(null)}
+        title={modal?.mode === 'edit' ? 'Edit Actor Profile' : 'Add New Actor'}
+        subtitle="Visual focal crop tool ensures avatars look perfect everywhere"
+        maxWidth="max-w-xl"
+      >
+        <div className="space-y-4">
+          <Field
+            label="Actor Name"
+            value={form.name || ''}
+            onChange={v => setForm({ ...form, name: v })}
+            placeholder="e.g. Jessica Alba"
+          />
+
+          <Field
+            label="Image URL"
+            value={form.image || ''}
+            onChange={v => setForm({ ...form, image: v })}
+            placeholder="https://..."
+          />
+
+          {/* Interactive Visual Focal Crop Tool */}
+          {form.image && (
+            <div className="p-4 bg-black/50 border border-white/10 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-accent" /> Visual Focal Crop Preview
+                </span>
+                <span className="text-[11px] text-accent font-mono font-semibold">
+                  Zoom: {cropZoom.toFixed(1)}x
+                </span>
+              </div>
+
+              {/* Circle live preview */}
+              <div className="flex justify-center">
+                <div className="w-28 h-28 rounded-full border-4 border-accent/40 shadow-xl shadow-accent/20 overflow-hidden bg-white/5 relative">
+                  <div
+                    className="w-full h-full"
+                    style={{
+                      backgroundImage: `url(${form.image})`,
+                      backgroundSize: `${Math.round(cropZoom * 100)}%`,
+                      backgroundPosition: `${cropX}% ${cropY}%`,
+                      backgroundRepeat: 'no-repeat',
+                    }}
+                  />
+                </div>
+              </div>
+
               {/* Sliders */}
-              <div className="w-full space-y-3">
+              <div className="space-y-3 pt-2 border-t border-white/5">
                 <div>
-                  <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                    <span>🔍 Zoom</span>
-                    <span>{(Number(form.cropZoom) || 1).toFixed(1)}×</span>
+                  <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                    <span>Horizontal Focus (X)</span>
+                    <span className="font-mono">{cropX}%</span>
                   </div>
-                  <input type="range" min="1" max="3" step="0.05"
-                    value={form.cropZoom ?? '1'}
-                    onChange={e => setForm({ ...form, cropZoom: e.target.value })}
-                    className="w-full h-2 appearance-none bg-secondary rounded-full cursor-pointer accent-accent" />
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={cropX}
+                    onChange={e => setCropX(Number(e.target.value))}
+                    className="w-full accent-accent"
+                  />
                 </div>
+
                 <div>
-                  <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                    <span>↔ Horizontal</span>
-                    <span>{form.cropX ?? 50}%</span>
+                  <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                    <span>Vertical Focus (Y)</span>
+                    <span className="font-mono">{cropY}%</span>
                   </div>
-                  <input type="range" min="0" max="100" step="1"
-                    value={form.cropX ?? '50'}
-                    onChange={e => setForm({ ...form, cropX: e.target.value })}
-                    className="w-full h-2 appearance-none bg-secondary rounded-full cursor-pointer accent-accent" />
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={cropY}
+                    onChange={e => setCropY(Number(e.target.value))}
+                    className="w-full accent-accent"
+                  />
                 </div>
+
                 <div>
-                  <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                    <span>↕ Vertical</span>
-                    <span>{form.cropY ?? 50}%</span>
+                  <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                    <span>Zoom Multiplier</span>
+                    <span className="font-mono">{cropZoom.toFixed(1)}x</span>
                   </div>
-                  <input type="range" min="0" max="100" step="1"
-                    value={form.cropY ?? '50'}
-                    onChange={e => setForm({ ...form, cropY: e.target.value })}
-                    className="w-full h-2 appearance-none bg-secondary rounded-full cursor-pointer accent-accent" />
+                  <input
+                    type="range"
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    value={cropZoom}
+                    onChange={e => setCropZoom(Number(e.target.value))}
+                    className="w-full accent-accent"
+                  />
                 </div>
               </div>
             </div>
+          )}
+
+          <TextAreaField
+            label="Bio (Optional)"
+            value={form.bio || ''}
+            onChange={v => setForm({ ...form, bio: v })}
+            placeholder="Short bio or actor information..."
+            rows={2}
+          />
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveActor}
+              disabled={actionLoading.saveActor}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.saveActor ? <Loader size="small" /> : 'Save Actor'}
+            </button>
           </div>
-        )}
-
-        <button onClick={async () => {
-          setButtonLoading(prev => ({ ...prev, saveActor: true }));
-          await handleSaveActor();
-          setButtonLoading(prev => ({ ...prev, saveActor: false }));
-        }}
-          disabled={buttonLoading.saveActor}
-          className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center min-h-[40px]">
-          {buttonLoading.saveActor ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Actor')}
-        </button>
+        </div>
       </Modal>
 
-      <Modal open={modal?.type === 'category'} onClose={() => setModal(null)} title={modal?.mode === 'edit' ? 'Edit Category' : 'Add Category'}>
-        <Field label="Name" value={form.name || ''} onChange={v => setForm({ ...form, name: v })} />
-        <Field label="Icon (emoji)" value={form.icon || ''} onChange={v => setForm({ ...form, icon: v })} placeholder="🎵" />
-        <button onClick={async () => {
-          setButtonLoading(prev => ({ ...prev, saveCategory: true }));
-          await handleSaveCategory();
-          setButtonLoading(prev => ({ ...prev, saveCategory: false }));
-        }}
-          disabled={buttonLoading.saveCategory}
-          className="w-full mt-2 py-2 bg-primary text-primary-foreground rounded-[20px] text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center min-h-[40px]">
-          {buttonLoading.saveCategory ? <Loader size="small" /> : (modal?.mode === 'edit' ? 'Save Changes' : 'Add Category')}
-        </button>
+      {/* Modal 6: Category Add / Edit */}
+      <Modal
+        open={modal?.type === 'category'}
+        onClose={() => setModal(null)}
+        title={modal?.mode === 'edit' ? 'Edit Category' : 'Create Category'}
+        subtitle="Manage video tags and genres"
+      >
+        <div className="space-y-4">
+          <Field
+            label="Category Name"
+            value={form.name || ''}
+            onChange={v => setForm({ ...form, name: v })}
+            placeholder="e.g. Action, Cyberpunk, Comedy"
+          />
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveCategory}
+              disabled={actionLoading.saveCategory}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.saveCategory ? <Loader size="small" /> : 'Save Category'}
+            </button>
+          </div>
+        </div>
       </Modal>
+
+      {/* Modal 7: Bulk Create Categories */}
+      <Modal
+        open={modal?.type === 'bulk-category'}
+        onClose={() => setModal(null)}
+        title="Bulk Add Categories"
+        subtitle="Paste multiple category names separated by commas or line breaks"
+      >
+        <div className="space-y-4">
+          <TextAreaField
+            label="Category Names"
+            value={form.bulkNames || ''}
+            onChange={v => setForm({ ...form, bulkNames: v })}
+            placeholder={"Action, Adventure, Comedy\nDrama, Horror, Sci-Fi\nRomance, Thriller"}
+            rows={5}
+            hint="Separate each category with a comma or new line"
+          />
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkCreateCategories}
+              disabled={actionLoading.bulkCreateCategories}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.bulkCreateCategories ? <Loader size="small" /> : 'Create All Categories'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 8: Bulk Create Channels */}
+      <Modal
+        open={modal?.type === 'bulk-channel'}
+        onClose={() => setModal(null)}
+        title="Bulk Add Channels"
+        subtitle="Enter multiple channels (one per line, format: Name or Name | Handle | Description)"
+      >
+        <div className="space-y-4">
+          <TextAreaField
+            label="Channels List (One per line)"
+            value={form.bulkNames || ''}
+            onChange={v => setForm({ ...form, bulkNames: v })}
+            placeholder={"Bratty Sis | brattysis | Official Bratty Sis Channel\nSis Loves Me | sislovesme | Sis Loves Me Series\nPure Taboo | puretaboo | Pure Taboo Original"}
+            rows={5}
+            hint="One channel per line. Format: Name | Handle | Description"
+          />
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkCreateChannels}
+              disabled={actionLoading.bulkCreateChannels}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.bulkCreateChannels ? <Loader size="small" /> : 'Create All Channels'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal 9: Bulk Create Actors */}
+      <Modal
+        open={modal?.type === 'bulk-actor'}
+        onClose={() => setModal(null)}
+        title="Bulk Add Actors"
+        subtitle="Enter multiple actors (one per line or comma-separated, or Name | Image URL)"
+      >
+        <div className="space-y-4">
+          <TextAreaField
+            label="Actors List"
+            value={form.bulkNames || ''}
+            onChange={v => setForm({ ...form, bulkNames: v })}
+            placeholder={"Mia Malkova | https://...\nLana Rhoades\nRiley Reid | https://...\nAbella Danger"}
+            rows={5}
+            hint="One actor per line (or separated by comma). Format: Name or Name | Image URL"
+          />
+
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkCreateActors}
+              disabled={actionLoading.bulkCreateActors}
+              className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-white text-xs font-semibold shadow-lg shadow-accent/25 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {actionLoading.bulkCreateActors ? <Loader size="small" /> : 'Create All Actors'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 }

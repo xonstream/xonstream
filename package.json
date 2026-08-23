@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "concurrently --kill-others --names \"BACKEND,FRONTEND\" --prefix-colors \"blue,green\" \"npm run backend\" \"npm run frontend\"",
     "frontend": "cd frontend && npm run dev",
-    "backend": "cd backend && npm run dev",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "backend": "cd backend && npm start",
+    "worker:dev": "cd cloudflare-worker && npm run dev",
+    "worker:deploy": "cd cloudflare-worker && npx wrangler deploy",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install && cd ../cloudflare-worker && npm install",
     "build": "cd frontend && npm run build",
     "test": "cd frontend && npm test"
   },

@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, Search, Sun, Moon, User, X, Pencil, LogOut } from 'lucide-react';
-import { getTheme, setTheme, getCurrentUser, signOut, getProfile, saveProfile } from '@/lib/store';
+import { Menu, Search, Sun, Moon, User, X, Pencil, LogOut, Film, Tv, Sparkles, Flame, Palette, Check } from 'lucide-react';
+import { getTheme, setTheme, THEMES, type ThemeMode, getCurrentUser, signOut, getProfile, saveProfile } from '@/lib/store';
+import { quickSearch, type QuickSearchResult } from '@/lib/api';
+import { generateVideoUrl } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface HeaderProps {
@@ -10,98 +12,120 @@ interface HeaderProps {
 
 export default function Header({ onToggleSidebar }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDark, setIsDark] = useState(() => {
-    const theme = getTheme();
-    console.log('Header mounted, theme from localStorage:', theme);
-    return theme === 'dark';
-  });
+  const [isTyping, setIsTyping] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<ThemeMode>(() => getTheme());
+  const [themeOpen, setThemeOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editProfile, setEditProfile] = useState(false);
   const [profileForm, setProfileForm] = useState(() => getProfile());
+  const [suggestions, setSuggestions] = useState<QuickSearchResult | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const themeDropdownRef = useRef<HTMLDivElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const navigate = useNavigate();
   const location = useLocation();
   const user = getCurrentUser();
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync theme state on mount and when it changes externally
+  // Sync theme
   useEffect(() => {
-    const currentTheme = getTheme();
-    console.log('useEffect syncing theme:', currentTheme);
-    setIsDark(currentTheme === 'dark');
+    setCurrentTheme(getTheme());
   }, []);
 
+  // Click outside to close dropdowns
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
         setEditProfile(false);
       }
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(e.target as Node)) {
+        setThemeOpen(false);
+      }
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleThemeToggle = () => {
-    const newTheme = isDark ? 'light' : 'dark';
-    console.log('Theme toggle: current=', isDark, 'new=', newTheme);
-    setTheme(newTheme);
-    setIsDark(newTheme === 'dark');
-    toast.success(`${newTheme === 'dark' ? '🌙 Dark' : '☀️ Light'} mode enabled`);
-  };
-
-  // Sync search input with URL query parameter when navigating or URL changes and input is not focused
+  // Quick live search as user types (50ms debounce)
   useEffect(() => {
-    const activeEl = document.activeElement;
-    const isInputFocused = activeEl && (activeEl.id === 'desktop-search-input' || activeEl.id === 'mobile-search-input');
-    
-    // If the input is currently focused, do not sync (prevents cursor jumping/input clearing while typing)
-    if (isInputFocused) {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+
+    const q = searchQuery.trim();
+    if (!q) {
+      setSuggestions(null);
+      setShowDropdown(false);
       return;
     }
-    
-    const pathParts = location.pathname.split('/').filter(Boolean);
-    const lastPart = pathParts[pathParts.length - 1];
-    const isOnSearchPage = lastPart === 'search';
-    
-    if (isOnSearchPage) {
-      const params = new URLSearchParams(location.search);
-      const queryParam = params.get('q') || '';
-      if (searchQuery !== queryParam) {
-        setSearchQuery(queryParam);
-      }
-    } else {
-      if (searchQuery !== '') {
-        setSearchQuery('');
-      }
-    }
-  }, [location.pathname, location.search]);
 
-  // DISABLED: Live search causes infinite loop
-  // Search only works on Enter key or search button click
+    setIsSearching(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await quickSearch(q);
+        setSuggestions(results);
+        setShowDropdown(true);
+      } catch (err) {
+        console.error('Quick search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 60);
 
-  const handleLogoClick = () => {
-    // Clear search query
-    setSearchQuery('');
-    // Scroll to the top of the page
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [searchQuery]);
+
+  const handleSelectTheme = (mode: ThemeMode) => {
+    setTheme(mode);
+    setCurrentTheme(mode);
+    setThemeOpen(false);
+    const selected = THEMES.find(t => t.id === mode);
+    toast.success(`${selected?.icon} ${selected?.name} theme applied!`);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('=== HANDLESEARCH CALLED ===', { searchQuery });
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
+  const handleSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setShowDropdown(false);
     if (searchQuery.trim()) {
-      const searchUrl = `/search?q=${encodeURIComponent(searchQuery.trim())}`;
-      console.log('Navigating to:', searchUrl);
-      navigate(searchUrl);
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
       setMobileSearchOpen(false);
-    } else {
-      console.log('Search query is empty, not navigating');
     }
+  };
+
+  const handleSelectVideo = (post: any) => {
+    setShowDropdown(false);
+    setMobileSearchOpen(false);
+    const url = generateVideoUrl(post.id, post.title);
+    navigate(url, { state: { post } });
+  };
+
+  const handleSelectChannel = (chId: string) => {
+    setShowDropdown(false);
+    setMobileSearchOpen(false);
+    navigate(`/channel/${chId}`);
+  };
+
+  const handleSelectActor = (actId: string) => {
+    setShowDropdown(false);
+    setMobileSearchOpen(false);
+    navigate(`/actor/${actId}`);
+  };
+
+  const handleLogoClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setSearchQuery('');
+    setShowDropdown(false);
+    navigate('/');
   };
 
   const handleSaveProfile = () => {
@@ -120,134 +144,360 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const profileName = profileForm.name || user?.username || '';
   const avatarLetter = (profileName || 'U')[0].toUpperCase();
 
+  const hasSuggestions = suggestions && (
+    (suggestions.videos && suggestions.videos.length > 0) ||
+    (suggestions.channels && suggestions.channels.length > 0) ||
+    (suggestions.actors && suggestions.actors.length > 0)
+  );
+
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 h-12 sm:h-14 bg-background/95 backdrop-blur-sm border-b border-border flex items-center px-3 sm:px-4 gap-3 sm:gap-4">
+    <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-background/95 backdrop-blur-xl border-b border-border flex items-center px-3 sm:px-4 gap-3 sm:gap-4 transition-colors">
+      
       {/* Mobile expanded search */}
       {mobileSearchOpen && (
-        <div className="absolute inset-0 z-[100] h-12 bg-background flex items-center px-3 gap-2 animate-fade-in sm:hidden">
-          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-secondary rounded-[24px] border border-border overflow-hidden">
-            <input type="text" id="mobile-search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search..." autoFocus
-              className="flex-1 bg-transparent px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" />
-            <button type="submit" className="px-4 py-2 bg-tertiary hover:bg-border transition-colors border-l border-border">
-              <Search className="w-4 h-4 text-foreground" />
+        <div className="absolute inset-0 z-[100] bg-background flex flex-col px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-150 sm:hidden">
+          <div className="flex items-center gap-2">
+            <form onSubmit={handleSearchSubmit} className="flex-1 flex items-center bg-secondary/80 rounded-2xl border border-border overflow-hidden shadow-lg">
+              <input 
+                type="text" 
+                value={searchQuery} 
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search videos, channels, actors in milliseconds..." 
+                autoFocus
+                className="flex-1 bg-transparent px-4 py-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none" 
+              />
+              <button type="submit" className="px-3.5 py-2.5 bg-accent text-white transition-colors">
+                <Search className="w-4 h-4" />
+              </button>
+            </form>
+            <button 
+              onClick={() => setMobileSearchOpen(false)} 
+              className="p-2 rounded-xl bg-secondary/60 hover:bg-secondary text-foreground transition-colors"
+            >
+              <X className="w-5 h-5" />
             </button>
-          </form>
-          <button onClick={() => setMobileSearchOpen(false)} className="p-2 rounded-full hover:bg-secondary transition-colors z-[101]">
-            <X className="w-5 h-5 text-foreground" />
-          </button>
+          </div>
+
+          {/* Mobile Instant Dropdown List */}
+          {hasSuggestions && (
+            <div className="mt-2 bg-[#12131a] border border-white/10 rounded-2xl shadow-2xl overflow-y-auto max-h-[75vh] divide-y divide-white/5">
+              {/* Channels & Actors */}
+              {(suggestions.channels.length > 0 || suggestions.actors.length > 0) && (
+                <div className="p-2 flex flex-wrap gap-1.5">
+                  {suggestions.channels.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => handleSelectChannel(c.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-white border border-white/5"
+                    >
+                      <Tv className="w-3.5 h-3.5 text-blue-400" />
+                      <span>{c.name}</span>
+                    </button>
+                  ))}
+                  {suggestions.actors.map(a => (
+                    <button
+                      key={a.id}
+                      onClick={() => handleSelectActor(a.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-white border border-white/5"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                      <span>{a.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Videos */}
+              {suggestions.videos.map(p => (
+                <div
+                  key={p.id}
+                  onClick={() => handleSelectVideo(p)}
+                  className="p-2.5 flex items-center gap-3 active:bg-white/5 cursor-pointer"
+                >
+                  <img 
+                    src={p.thumbnail || `https://thumb.tapecontent.net/thumb/${p.id}/thumb.jpg`} 
+                    alt={p.title} 
+                    className="w-16 h-10 rounded-lg object-cover bg-white/5 flex-shrink-0"
+                    onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-white line-clamp-1">{p.title}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{p.channelName || 'Video'}</p>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                onClick={() => handleSearchSubmit()}
+                className="w-full p-2.5 text-center text-xs font-bold text-accent hover:bg-accent/10 transition-colors"
+              >
+                View all results for "{searchQuery}" →
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Left */}
+      {/* Left: Hamburger + Logo */}
       <div className="flex items-center gap-2 sm:gap-3">
-        <button onClick={onToggleSidebar} className="p-2 rounded-full hover:bg-secondary transition-colors">
-          <Menu className="w-5 h-5 text-foreground" />
+        <button 
+          onClick={onToggleSidebar} 
+          className="p-2 rounded-xl hover:bg-secondary active:scale-95 transition-all text-foreground"
+          title="Toggle Navigation"
+        >
+          <Menu className="w-5 h-5" />
         </button>
-        <Link to="/" onClick={handleLogoClick} className="flex items-center gap-1.5">
-          <img src="/siteicon.ico" alt="XON STREAM Logo" className="w-6 h-6 sm:w-7 sm:h-7" />
-          <span className="text-foreground font-bold text-base sm:text-lg hidden sm:inline">XON STREAM</span>
-          <span className="text-foreground font-bold text-base sm:hidden">XON STREAM</span>
-        </Link>
+        <button onClick={handleLogoClick} className="flex items-center gap-2 group">
+          <img 
+            src="/siteicon.ico" 
+            alt="XON STREAM Logo" 
+            className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-105 transition-transform" 
+          />
+          <span className="text-foreground font-black text-base sm:text-lg tracking-tight">
+            XON <span className="text-accent">STREAM</span>
+          </span>
+        </button>
       </div>
 
-      {/* Center - Search (desktop) */}
-      <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-auto hidden sm:flex items-center">
-        <div className="flex flex-1 items-center bg-secondary rounded-[24px] border border-border overflow-hidden">
-          <input type="text" id="desktop-search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search..." className="flex-1 bg-transparent px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" />
-          <button type="submit" className="px-4 py-2 bg-tertiary hover:bg-border transition-colors border-l border-border">
-            <Search className="w-4 h-4 text-foreground" />
-          </button>
-        </div>
-      </form>
+      {/* Center - Super Fast Instant Search (Desktop) */}
+      <div className="flex-1 max-w-xl mx-auto hidden sm:block relative" ref={searchContainerRef}>
+        <form onSubmit={handleSearchSubmit} className="flex items-center">
+          <div className="flex flex-1 items-center bg-secondary/60 hover:bg-secondary focus-within:bg-secondary rounded-2xl border border-border focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 overflow-hidden shadow-inner transition-all">
+            <input 
+              ref={searchInputRef}
+              type="text" 
+              value={searchQuery} 
+              onChange={e => setSearchQuery(e.target.value)}
+              onFocus={() => { if (suggestions) setShowDropdown(true); }}
+              placeholder="Instant Search videos, creators, actors..." 
+              className="flex-1 bg-transparent px-4 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none" 
+            />
+            {searchQuery && (
+              <button 
+                type="button" 
+                onClick={() => { setSearchQuery(''); setShowDropdown(false); }}
+                className="p-1.5 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button 
+              type="submit" 
+              className="px-4 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold transition-all border-l border-white/10 flex items-center justify-center"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
+        </form>
 
-      {/* Right */}
-      <div className="flex items-center gap-1 ml-auto">
-        {/* Mobile search icon - hidden when search is open */}
+        {/* Live Search Floating Dropdown */}
+        {showDropdown && hasSuggestions && (
+          <div className="absolute left-0 right-0 top-full mt-2 bg-[#12131a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150 divide-y divide-white/5">
+            
+            {/* Quick Channel & Actor Matches */}
+            {(suggestions.channels.length > 0 || suggestions.actors.length > 0) && (
+              <div className="p-2.5 bg-white/[0.02] flex flex-wrap gap-2">
+                {suggestions.channels.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleSelectChannel(c.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/20 text-xs font-semibold transition-all"
+                  >
+                    <Tv className="w-3.5 h-3.5" />
+                    <span>{c.name}</span>
+                  </button>
+                ))}
+                {suggestions.actors.map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => handleSelectActor(a.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-300 border border-pink-500/20 text-xs font-semibold transition-all"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{a.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Video List */}
+            <div className="divide-y divide-white/5 max-h-80 overflow-y-auto">
+              {suggestions.videos.map(p => (
+                <div
+                  key={p.id}
+                  onClick={() => handleSelectVideo(p)}
+                  className="p-2.5 flex items-center gap-3 hover:bg-white/[0.05] cursor-pointer transition-colors group"
+                >
+                  <img 
+                    src={p.thumbnail || `https://thumb.tapecontent.net/thumb/${p.id}/thumb.jpg`} 
+                    alt={p.title} 
+                    className="w-16 h-10 rounded-lg object-cover bg-white/5 flex-shrink-0 group-hover:scale-105 transition-transform"
+                    onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-white group-hover:text-accent transition-colors line-clamp-1">
+                      {p.title}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">
+                      {p.channelName || 'Featured Video'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer view all */}
+            <button
+              onClick={() => handleSearchSubmit()}
+              className="w-full p-2.5 text-center text-xs font-bold text-accent hover:bg-accent/10 transition-colors block"
+            >
+              See all results for "{searchQuery}" →
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Right Tools */}
+      <div className="flex items-center gap-1.5 ml-auto">
+        {/* Mobile search trigger */}
         {!mobileSearchOpen && (
-          <button onClick={() => setMobileSearchOpen(true)} className="p-2 rounded-full hover:bg-secondary transition-colors sm:hidden">
-            <Search className="w-5 h-5 text-foreground" />
+          <button 
+            onClick={() => setMobileSearchOpen(true)} 
+            className="p-2 rounded-xl hover:bg-secondary active:scale-95 transition-all text-foreground sm:hidden"
+            title="Search"
+          >
+            <Search className="w-5 h-5" />
           </button>
         )}
-        <button onClick={handleThemeToggle} className="p-2 rounded-full hover:bg-secondary transition-colors">
-          {isDark ? <Moon className="w-5 h-5 text-foreground" /> : <Sun className="w-5 h-5 text-foreground" />}
-        </button>
 
-        {/* Profile icon + dropdown */}
+        {/* Multi-Theme Selector Popover */}
+        <div className="relative" ref={themeDropdownRef}>
+          <button 
+            onClick={() => setThemeOpen(!themeOpen)} 
+            className="p-2 rounded-xl hover:bg-secondary active:scale-95 transition-all text-foreground flex items-center gap-1.5"
+            title="Choose Theme Style"
+          >
+            <Palette className="w-5 h-5 text-accent" />
+          </button>
+
+          {themeOpen && (
+            <div className="absolute right-0 top-11 w-64 bg-card/95 backdrop-blur-2xl border border-border rounded-2xl shadow-2xl z-50 p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-2.5 py-1.5 border-b border-border/50 flex items-center justify-between">
+                <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">Appearance</span>
+                <span className="text-[10px] text-muted-foreground font-mono">7 Themes</span>
+              </div>
+              <div className="space-y-1 pt-1 max-h-72 overflow-y-auto">
+                {THEMES.map(t => {
+                  const isActive = currentTheme === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => handleSelectTheme(t.id)}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                        isActive 
+                          ? 'bg-accent/15 text-foreground ring-1 ring-accent' 
+                          : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div 
+                          className="w-4 h-4 rounded-full border border-white/20 shadow-inner flex-shrink-0" 
+                          style={{ background: t.accentPreview }} 
+                        />
+                        <span className="flex items-center gap-1.5">
+                          <span>{t.icon}</span>
+                          <span>{t.name}</span>
+                        </span>
+                      </div>
+                      {isActive && <Check className="w-3.5 h-3.5 text-accent" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Profile Avatar */}
         <div className="relative" ref={dropdownRef}>
-          <button onClick={() => {
-            if (user) {
-              setProfileOpen(!profileOpen);
-            } else {
-              toast.info('Sign up/login is currently under work, it will be available soon.');
-            }
-          }}
-            className="p-1 rounded-full hover:bg-secondary transition-colors">
+          <button 
+            onClick={() => {
+              if (user) {
+                setProfileOpen(!profileOpen);
+              } else {
+                toast.info('Sign up / login will be available soon.');
+              }
+            }}
+            className="p-1 rounded-full hover:ring-2 hover:ring-accent/40 active:scale-95 transition-all"
+          >
             {profileIcon ? (
-              <img src={profileIcon} alt="" className="w-7 h-7 rounded-full object-cover" />
+              <img src={profileIcon} alt="" className="w-8 h-8 rounded-full object-cover shadow" />
             ) : user ? (
-              <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center">
-                <span className="text-accent-foreground text-xs font-bold">{avatarLetter}</span>
+              <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shadow-lg shadow-accent/25">
+                <span className="text-white text-xs font-bold">{avatarLetter}</span>
               </div>
             ) : (
-              <User className="w-5 h-5 text-foreground" />
+              <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground">
+                <User className="w-4 h-4" />
+              </div>
             )}
           </button>
 
           {profileOpen && user && (
-            <div className="absolute right-0 top-10 w-72 bg-card border border-border rounded-[12px] shadow-xl z-50 overflow-hidden animate-fade-in">
+            <div className="absolute right-0 top-11 w-72 bg-[#12131a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
               {!editProfile ? (
                 <>
-                  <div className="px-4 py-3 border-b border-border">
-                    <p className="text-sm font-semibold text-foreground">{profileName}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                  <div className="px-4 py-3 border-b border-white/10">
+                    <p className="text-sm font-semibold text-white">{profileName}</p>
+                    <p className="text-xs text-gray-400">{user.email}</p>
                   </div>
-                  <button onClick={() => setEditProfile(true)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-secondary transition-colors">
-                    <Pencil className="w-4 h-4 text-muted-foreground" /> Edit Profile
+                  <button 
+                    onClick={() => setEditProfile(true)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-xs text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <Pencil className="w-4 h-4 text-accent" /> Edit Profile
                   </button>
-                  <button onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-destructive hover:bg-secondary transition-colors border-t border-border">
+                  <button 
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-xs text-rose-400 hover:bg-rose-500/10 transition-colors border-t border-white/10"
+                  >
                     <LogOut className="w-4 h-4" /> Log Out
                   </button>
                 </>
               ) : (
                 <div className="p-4 space-y-3">
-                  <p className="text-sm font-semibold text-foreground">Edit Profile</p>
+                  <p className="text-xs font-bold text-white uppercase tracking-wider">Edit Profile</p>
                   <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Display Name</label>
-                    <input value={profileForm.name} onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
-                      placeholder={user.username} className="w-full px-3 py-2 bg-secondary rounded-[12px] text-sm text-foreground outline-none border border-border focus:ring-2 focus:ring-ring" />
+                    <label className="text-[11px] text-gray-400 block mb-1">Display Name</label>
+                    <input 
+                      value={profileForm.name} 
+                      onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
+                      placeholder={user.username} 
+                      className="w-full px-3 py-2 bg-black/40 rounded-xl text-xs text-white outline-none border border-white/10 focus:border-accent" 
+                    />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Profile Icon URL</label>
-                    <input value={profileForm.icon} onChange={e => setProfileForm({ ...profileForm, icon: e.target.value })}
-                      placeholder="https://..." className="w-full px-3 py-2 bg-secondary rounded-[12px] text-sm text-foreground outline-none border border-border focus:ring-2 focus:ring-ring" />
+                    <label className="text-[11px] text-gray-400 block mb-1">Profile Icon URL</label>
+                    <input 
+                      value={profileForm.icon} 
+                      onChange={e => setProfileForm({ ...profileForm, icon: e.target.value })}
+                      placeholder="https://..." 
+                      className="w-full px-3 py-2 bg-black/40 rounded-xl text-xs text-white outline-none border border-white/10 focus:border-accent" 
+                    />
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Or Upload Image</label>
-                    <label className="flex items-center justify-center gap-2 w-full px-3 py-2.5 bg-secondary hover:bg-tertiary rounded-[12px] text-sm text-foreground cursor-pointer transition-colors border border-border">
-                      <Pencil className="w-3.5 h-3.5" /> Choose Image
-                      <input type="file" accept="image/*" className="hidden" onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = () => setProfileForm({ ...profileForm, icon: reader.result as string });
-                        reader.readAsDataURL(file);
-                      }} />
-                    </label>
-                  </div>
-                  {profileForm.icon && (
-                    <div className="flex justify-center">
-                      <img src={profileForm.icon} alt="Preview" className="w-16 h-16 rounded-full object-cover border-2 border-border" />
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <button onClick={handleSaveProfile}
-                      className="flex-1 py-2 bg-primary text-primary-foreground rounded-[12px] text-sm font-medium hover:opacity-90">Save</button>
-                    <button onClick={() => setEditProfile(false)}
-                      className="flex-1 py-2 bg-secondary text-secondary-foreground rounded-[12px] text-sm font-medium hover:bg-tertiary">Cancel</button>
+                  <div className="flex gap-2 pt-2">
+                    <button 
+                      onClick={handleSaveProfile}
+                      className="flex-1 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold shadow-lg shadow-accent/25 transition-all"
+                    >
+                      Save
+                    </button>
+                    <button 
+                      onClick={() => setEditProfile(false)}
+                      className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs font-semibold transition-all"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
               )}

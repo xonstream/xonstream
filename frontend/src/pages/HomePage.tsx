@@ -12,27 +12,17 @@ export default function HomePage() {
   const [page, setPage] = useState(1);
   const [category, setCategory] = useState(categoryFromUrl);
 
-  // Sync category from URL when navigating to homepage
+  // Sync category from URL when navigating to homepage and update SEO
   useEffect(() => {
     setCategory(categoryFromUrl);
-  }, [categoryFromUrl]);
+    setPage(1);
 
-  // Sync page from URL query parameter (resets to page 1 if not present)
-  useEffect(() => {
-    const p = parseInt(searchParams.get('page') || '1', 10);
-    setPage(p);
-  }, [searchParams]);
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
-    const params = new URLSearchParams(searchParams);
-    if (newPage > 1) {
-      params.set('page', newPage.toString());
+    if (categoryFromUrl) {
+      document.title = `${categoryFromUrl} Videos — Watch Free in HD | XON STREAM`;
     } else {
-      params.delete('page');
+      document.title = `XON STREAM — Free Premium Videos in Full HD | Watch Online`;
     }
-    setSearchParams(params);
-  };
+  }, [categoryFromUrl]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['posts', page, category],
@@ -71,7 +61,7 @@ export default function HomePage() {
       <CategoryPills active={category} onSelect={handleCategoryChange} categories={catOptions} />
 
       {isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-2 sm:gap-x-4 gap-y-6 sm:gap-y-8 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6 mt-4">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="animate-pulse">
               <div className="aspect-video rounded-[12px] bg-secondary" />
@@ -96,7 +86,7 @@ export default function HomePage() {
 
       {data && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-2 sm:gap-x-4 gap-y-6 sm:gap-y-8 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6 mt-4">
             {data.data.map(post => <PostBox key={post.id} post={post} />)}
           </div>
           {data.data.length === 0 && (
@@ -107,7 +97,7 @@ export default function HomePage() {
           <Pagination
             currentPage={data.pagination.page}
             totalPages={data.pagination.totalPages}
-            onPageChange={handlePageChange}
+            onPageChange={setPage}
           />
         </>
       )}

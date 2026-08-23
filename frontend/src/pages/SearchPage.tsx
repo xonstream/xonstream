@@ -11,42 +11,65 @@ export default function SearchPage() {
   const navigate = useNavigate();
   const query = params.get('q') || '';
   const category = params.get('category') || '';
+  const actor = params.get('actor') || '';
+  const channel = params.get('channel') || '';
   const [page, setPage] = useState(1);
 
-  // Redirect to homepage if no search query or category
+  // Redirect to homepage only if no search criteria are provided
   useEffect(() => {
-    if (!query && !category) {
+    if (!query && !category && !actor && !channel) {
       navigate('/', { replace: true });
     }
-  }, [query, category, navigate]);
+  }, [query, category, actor, channel, navigate]);
 
-  // Reset page when query changes
+  // Reset page when search criteria change & update SEO title
   useEffect(() => {
     setPage(1);
-  }, [query, category]);
+    if (query) {
+      document.title = `Search results for "${query}" | XON STREAM`;
+    } else if (actor) {
+      document.title = `${actor} — Videos and Scenes | XON STREAM`;
+    } else if (category) {
+      document.title = `${category} — Search Videos | XON STREAM`;
+    } else if (channel) {
+      document.title = `${channel} — Channel Videos | XON STREAM`;
+    }
+  }, [query, category, actor, channel]);
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['search', query, category, page],
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['search', query, category, actor, channel, page],
     queryFn: () => {
-      return searchPosts({ q: query || undefined, category: category || undefined, page });
+      return searchPosts({ 
+        q: query || undefined, 
+        category: category || undefined, 
+        actor: actor || undefined,
+        channel: channel || undefined,
+        page 
+      });
     },
-    enabled: !!(query || category),
+    enabled: !!(query || category || actor || channel),
     staleTime: 60_000,
   });
 
   const totalResults = data?.pagination?.total ?? 0;
+  const pageTitle = actor 
+    ? `Videos featuring "${actor}"` 
+    : channel 
+      ? `Videos from "${channel}"` 
+      : category 
+        ? `Category: ${category}` 
+        : `Results for "${query}"`;
 
   return (
-    <div className="p-4">
-      <h1 className="text-lg font-semibold text-foreground mb-1">Results for "{query}"</h1>
-      <p className="text-sm text-muted-foreground mb-6">
-        {isLoading ? 'Searching…' : data ? `${totalResults} results found` : ''}
+    <div className="p-2 sm:p-4">
+      <h1 className="text-base sm:text-lg font-semibold text-foreground mb-0.5">{pageTitle}</h1>
+      <p className="text-xs text-muted-foreground mb-4">
+        {isLoading ? 'Searching…' : data ? `${totalResults} video(s) found` : ''}
       </p>
 
-      {/* Always render the grid container to prevent layout shift */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
+      {/* Grid container with tight modern spacing */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6">
         {isLoading ? (
-          // Show skeleton loader
           Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="animate-pulse">
               <div className="aspect-video rounded-[12px] bg-secondary" />
@@ -59,25 +82,21 @@ export default function SearchPage() {
             </div>
           ))
         ) : isError ? (
-          // Show error
           <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground">
             <Search className="w-16 h-16 mb-4 opacity-30" />
             <p className="text-lg">Could not reach the server</p>
           </div>
         ) : data && data.data.length > 0 ? (
-          // Show results
           data.data.map(post => <PostBox key={post.id} post={post} />)
         ) : (
-          // Show no results
           <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground">
             <Search className="w-16 h-16 mb-4 opacity-30" />
-            <p className="text-lg">No results found for "{query}"</p>
-            <p className="text-sm mt-1">Try different keywords</p>
+            <p className="text-lg">No results found for {actor || channel || category || query}</p>
+            <p className="text-sm mt-1">Try different keywords or explore categories</p>
           </div>
         )}
       </div>
       
-      {/* Pagination only when we have data */}
       {data && data.data.length > 0 && (
         <Pagination currentPage={data.pagination.page} totalPages={data.pagination.totalPages} onPageChange={setPage} />
       )}

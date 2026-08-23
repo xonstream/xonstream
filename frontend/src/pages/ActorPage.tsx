@@ -23,6 +23,10 @@ export default function ActorPage() {
   const posts = actorData?.data?.posts ?? [];
   const totalPages = actorData?.data?.pagination?.totalPages ?? 1;
 
+  if (actor?.name) {
+    document.title = `${actor.name} — Free Adult Videos and Profile | XON STREAM`;
+  }
+
   if (!actor && !isLoading) {
     return <div className="flex items-center justify-center min-h-[60vh] text-muted-foreground">Actor not found</div>;
   }
@@ -32,26 +36,25 @@ export default function ActorPage() {
       {/* Actor Profile */}
       <div className="flex flex-col items-center py-8 px-4">
         {actor?.image ? (
-          <div className="w-32 h-32 rounded-full border-4 border-border overflow-hidden" style={{ background: 'var(--secondary)' }}>
-            <div style={{
-              width: '100%', height: '100%',
-              backgroundImage: `url(${actor.image})`,
-              backgroundSize: `${Math.round((actor.cropZoom ?? 1) * 100)}%`,
-              backgroundPosition: `${actor.cropX ?? 50}% ${actor.cropY ?? 50}%`,
-              backgroundRepeat: 'no-repeat',
-            }} />
+          <div className="w-32 h-32 rounded-full border-4 border-accent/40 shadow-xl shadow-accent/20 overflow-hidden bg-secondary">
+            <img
+              src={actor.image}
+              alt={actor?.name || 'Actor'}
+              className="w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
           </div>
         ) : (
-          <div className="w-32 h-32 rounded-full border-4 border-border bg-secondary flex items-center justify-center text-3xl font-bold text-muted-foreground">
+          <div className="w-32 h-32 rounded-full border-4 border-accent/40 shadow-xl shadow-accent/20 bg-secondary flex items-center justify-center text-4xl font-bold text-muted-foreground">
             {actor?.name?.[0] ?? '?'}
           </div>
         )}
-        <h1 className="text-xl font-bold text-foreground mt-4">{actor?.name ?? 'Loading...'}</h1>
+        <h1 className="text-2xl font-bold text-foreground mt-4">{actor?.name ?? 'Loading...'}</h1>
       </div>
 
       {/* Videos Grid */}
       {isLoading && (
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
+        <div className="p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="animate-pulse">
               <div className="aspect-video rounded-[12px] bg-secondary" />
@@ -60,7 +63,7 @@ export default function ActorPage() {
         </div>
       )}
       {posts.length > 0 && (
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
+        <div className="p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6">
           {posts.map(p => <PostBox key={p.id} post={p} />)}
         </div>
       )}

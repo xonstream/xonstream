@@ -93,7 +93,8 @@ const appRoutes = (
     <Route path="search" element={<SearchPage />} />
     <Route path="popular" element={<PopularPage />} />
     <Route path="trending" element={<TrendingPage />} />
-    <Route path="favourites" element={<FavouritesPage />} />
+    <Route path="liked" element={<FavouritesPage />} />
+    <Route path="favourites" element={<Navigate to="/liked" replace />} />
     <Route path="subscriptions" element={<SubscriptionsPage />} />
     <Route path="history" element={<HistoryPage />} />
     <Route path="terms" element={<TermsPage />} />

@@ -1,22 +1,38 @@
 const supabase = require('../config/supabase');
 const cacheService = require('../services/cacheService');
 const streamtapeService = require('../services/streamtape');
-const seekstreamingService = require('../services/seekstreaming');
-const env = require('../config/env');
 const logger = require('../utils/logger');
 
-const { getPostThumbnail, getPostPreview } = require('../utils/postHelpers');
+// Helper function to build thumbnail URL
+function buildThumbnailUrl(thumbnailPath, videoId) {
+  if (thumbnailPath && (thumbnailPath.startsWith('http://') || thumbnailPath.startsWith('https://'))) {
+    return thumbnailPath;
+  }
+  if (videoId) {
+    return streamtapeService.getDefaultThumbnailUrl(videoId);
+  }
+  return thumbnailPath || '';
+}
+
+// Helper function to normalize title for matching
+function normalizeTitle(title) {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/\s+/g, '');
+}
 
 module.exports = async (fastify, opts) => {
-  // Public configuration endpoint - serves only safe, non-sensitive config
+  // Public configuration endpoint
   fastify.get('/api/public/config', async (request, reply) => {
     try {
       const config = {
-        playerDomain: env.SEEKSTREAMING_PLAYER_DOMAIN || 'seekstreaming.com',
         apiBase: '',
-        version: '2.0.0'
+        version: '3.0.0',
+        primaryPlatform: 'streamtape'
       };
-      
+
       return reply.send({
         success: true,
         data: config
@@ -30,59 +46,13 @@ module.exports = async (fastify, opts) => {
     }
   });
 
-  // Public support form submission endpoint
-  fastify.post('/api/public/support', async (request, reply) => {
-    try {
-      const { fullName, email, description } = request.body || {};
-
-      if (!fullName || !email || !description) {
-        return reply.status(400).send({
-          success: false,
-          message: 'All fields (Full Name, Email, and Description) are required.'
-        });
-      }
-
-      const key = `support_request:${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const value = {
-        fullName: fullName.trim(),
-        email: email.trim(),
-        description: description.trim(),
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      };
-
-      const { error } = await supabase
-        .from('settings')
-        .insert({ key, value });
-
-      if (error) {
-        logger.error('Failed to save support request', error);
-        return reply.status(500).send({
-          success: false,
-          message: 'Failed to submit support request.'
-        });
-      }
-
-      return reply.send({
-        success: true,
-        message: 'Support request submitted successfully!'
-      });
-    } catch (error) {
-      logger.error('Support submission error', error);
-      return reply.status(500).send({
-        success: false,
-        message: 'An error occurred during submission.'
-      });
-    }
-  });
-
+  // GET /api/posts - paginated list of posts
   fastify.get('/api/posts', async (request, reply) => {
     try {
       const page = parseInt(request.query.page, 10) || 1;
       const perPage = parseInt(request.query.perPage, 10) || 12;
       const category = request.query.category;
 
-      // Build cache key including category
       const cacheKey = `posts:page:${page}:perPage:${perPage}:category:${category || 'all'}`;
       const cached = cacheService.get(cacheKey);
       if (cached && page > 1) {
@@ -90,25 +60,18 @@ module.exports = async (fastify, opts) => {
       }
 
       const skip = (page - 1) * perPage;
-
       let postIds = null;
       let totalCount = null;
 
       // If category filter is provided, first get post IDs from post_categories junction table
       if (category && category !== 'all') {
-        logger.info(`=== CATEGORY FILTER REQUESTED: ${category} ===`);
-        
-        // Step 1: Find category ID by name
         const { data: categoryData, error: catError } = await supabase
           .from('categories')
           .select('id')
           .ilike('name', category)
-          .single();
+          .maybeSingle();
 
         if (catError || !categoryData) {
-          logger.warn(`Category not found: ${category}`);
-          logger.warn(`Category lookup error:`, catError);
-          // Return empty results if category doesn't exist
           return reply.send({
             success: true,
             data: [],
@@ -121,34 +84,19 @@ module.exports = async (fastify, opts) => {
           });
         }
 
-        logger.info(`Found category ID: ${categoryData.id} for name: ${category}`);
-
-        // Step 2: Get all post IDs that have this category
         const { data: postCategories, error: pcError } = await supabase
           .from('post_categories')
           .select('post_id')
           .eq('category_id', categoryData.id);
 
         if (pcError) {
-          logger.error('Error fetching post_categories', pcError);
+          logger.error('Error fetching post_categories:', pcError);
           throw pcError;
         }
 
         postIds = (postCategories || []).map(pc => pc.post_id);
-        logger.info(`Found ${postIds.length} posts with category ${category}`);
 
         if (postIds.length === 0) {
-          // No posts in this category
-          logger.warn(`No posts found in category: ${category}`);
-          logger.warn(`Checking if post_categories table has ANY data...`);
-          
-          const { data: allPostCategories } = await supabase
-            .from('post_categories')
-            .select('post_id, category_id')
-            .limit(10);
-          
-          logger.warn(`Sample post_categories data:`, allPostCategories);
-          
           return reply.send({
             success: true,
             data: [],
@@ -162,10 +110,9 @@ module.exports = async (fastify, opts) => {
         }
 
         totalCount = postIds.length;
-        logger.info(`Total posts in category ${category}: ${totalCount}`);
       }
 
-      // Build the posts query
+      // Build the posts query from Supabase
       let queryBuilder = supabase
         .from('posts')
         .select(`
@@ -176,7 +123,6 @@ module.exports = async (fastify, opts) => {
         `, { count: 'exact' })
         .order('created_at', { ascending: false });
 
-      // If we have specific post IDs from category filter, use them
       if (postIds) {
         queryBuilder = queryBuilder.in('id', postIds);
       }
@@ -184,88 +130,54 @@ module.exports = async (fastify, opts) => {
       const { data: posts, error, count } = await queryBuilder
         .range(skip, skip + perPage - 1);
 
-      // Fallback: when count is null (can happen with complex multi-join queries in
-      // production/PostgREST), run a separate lightweight count-only query so that
-      // pagination totals are always accurate.
-      let resolvedCount = count;
-      if (resolvedCount === null || resolvedCount === undefined) {
-        try {
-          let countQuery = supabase
-            .from('posts')
-            .select('id', { count: 'exact', head: true });
-
-          if (postIds) {
-            countQuery = countQuery.in('id', postIds);
-          }
-
-          const { count: fallbackCount, error: countError } = await countQuery;
-
-          if (!countError && fallbackCount !== null) {
-            resolvedCount = fallbackCount;
-            logger.info(`Used fallback count query: ${resolvedCount} posts`);
-          } else {
-            logger.warn('Fallback count query also returned null, defaulting to 0');
-            resolvedCount = 0;
-          }
-        } catch (countErr) {
-          logger.warn('Fallback count query failed:', countErr.message);
-          resolvedCount = 0;
-        }
-      }
-
       if (error) {
-        logger.error('Error fetching posts from Supabase', error);
+        logger.error('Error fetching posts from Supabase:', error);
         throw error;
       }
 
-      // Fetch all categories for these posts from the junction table
-      const postsWithCategories = await Promise.all((posts || []).map(async (post) => {
-        // Get all categories for this post
-        const { data: postCats, error: pcError } = await supabase
+      // Fetch categories for each post
+      const postsWithDetails = await Promise.all((posts || []).map(async (post) => {
+        const { data: postCats } = await supabase
           .from('post_categories')
           .select('category:categories(name)')
           .eq('post_id', post.id);
-
-        if (pcError) {
-          logger.warn(`Error fetching categories for post ${post.id}:`, pcError.message);
-        }
 
         const categories = (postCats || [])
           .map(pc => pc.category?.name)
           .filter(Boolean);
 
-        // Fetch thumbnail and preview from API on-demand (with caching)
-        const [thumbnail, previewUrl] = await Promise.all([
-          getPostThumbnail(post),
-          getPostPreview(post)
-        ]);
-        
-        // DIAGNOSTIC: Log EXACT channel data from Supabase
-        logger.info(`Public Post "${post.title}" (ID: ${post.id}):`);
-        logger.info(`  - channel_id in DB: ${post.channel_id}`);
-        logger.info(`  - channel.name from join: ${post.channel?.name || 'NULL'}`);
-        
+        const videoSources = (post.post_video_sources || []).map((vs, index) => ({
+          platform: vs.platform || 'streamtape',
+          name: (post.post_video_sources?.length || 0) > 1 ? `Server ${index + 1}` : 'Streamtape',
+          videoId: vs.video_id,
+          embedUrl: streamtapeService.getEmbedUrl(vs.video_id),
+          downloadUrl: streamtapeService.getDownloadUrl(vs.video_id),
+          thumbnail: streamtapeService.getDefaultThumbnailUrl(vs.video_id)
+        }));
+
+        const primaryVideoId = videoSources[0]?.videoId || '';
+        const thumbnail = buildThumbnailUrl(post.thumbnail, primaryVideoId);
+
         return {
           id: post.id,
           title: post.title,
           description: post.description || '',
           thumbnail: thumbnail,
-          previewUrl: previewUrl,
           channelName: post.channel?.name || '',
-          channelId: post.channel_id, // Return the actual channel_id from DB
+          channelId: post.channel_id,
           categories: categories,
-          category: categories[0] || '', // First category for backward compatibility
-          actors: (post.post_actors || []).map(pa => pa.actor?.name || '').filter(name => name),
-          videoSources: [], // Empty - will search API by title when needed
+          category: categories[0] || '',
+          actors: (post.post_actors || []).map(pa => pa.actor?.name || '').filter(Boolean),
+          videoSources: videoSources,
           createdAt: post.created_at,
           actorCount: post.post_actors ? post.post_actors.length : 0
         };
       }));
 
-      const total = totalCount !== null ? totalCount : (resolvedCount || 0);
+      const total = totalCount !== null ? totalCount : (count || 0);
       const result = {
         success: true,
-        data: postsWithCategories,
+        data: postsWithDetails,
         pagination: {
           page,
           perPage,
@@ -275,10 +187,9 @@ module.exports = async (fastify, opts) => {
       };
 
       cacheService.set(cacheKey, result, 3600);
-
       return reply.send(result);
     } catch (error) {
-      logger.error('Error fetching posts', error);
+      logger.error('Error fetching posts:', error);
       return reply.status(500).send({
         success: false,
         message: 'Failed to fetch posts'
@@ -286,6 +197,225 @@ module.exports = async (fastify, opts) => {
     }
   });
 
+  // ── Popular Videos (Randomized Weighted Quality Algorithm) ──────────────────
+  fastify.get('/api/posts/popular', async (request, reply) => {
+    try {
+      const page = parseInt(request.query.page, 10) || 1;
+      const perPage = parseInt(request.query.perPage, 10) || 12;
+      const skip = (page - 1) * perPage;
+
+      // 1. Fetch posts with full relations from Supabase
+      const { data: posts, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          channel:channels(id, name, logo),
+          post_actors(actor:actors(id, name)),
+          post_video_sources(platform, video_id)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (error) throw error;
+
+      // 2. Fetch categories junction
+      const postIds = (posts || []).map(p => p.id);
+      let categoriesMap = {};
+      if (postIds.length > 0) {
+        const { data: postCats } = await supabase
+          .from('post_categories')
+          .select('post_id, category:categories(name)')
+          .in('post_id', postIds);
+
+        if (postCats) {
+          postCats.forEach(pc => {
+            if (!categoriesMap[pc.post_id]) categoriesMap[pc.post_id] = [];
+            if (pc.category?.name) categoriesMap[pc.post_id].push(pc.category.name);
+          });
+        }
+      }
+
+      // 3. Format & Apply Randomized Weighted Quality Algorithm
+      const scoredPosts = (posts || []).map(post => {
+        const categories = categoriesMap[post.id] || [];
+        const videoSources = (post.post_video_sources || []).map((vs, index) => ({
+          platform: vs.platform || 'streamtape',
+          name: (post.post_video_sources?.length || 0) > 1 ? `Server ${index + 1}` : 'Streamtape',
+          videoId: vs.video_id,
+          embedUrl: streamtapeService.getEmbedUrl(vs.video_id),
+          downloadUrl: streamtapeService.getDownloadUrl(vs.video_id),
+          thumbnail: streamtapeService.getDefaultThumbnailUrl(vs.video_id)
+        }));
+
+        const primaryVideoId = videoSources[0]?.videoId || '';
+        const thumbnail = buildThumbnailUrl(post.thumbnail, primaryVideoId);
+        const actors = (post.post_actors || []).map(pa => pa.actor?.name || '').filter(Boolean);
+
+        // Quality Scoring:
+        let qualityScore = 50;
+        if (actors.length > 0) qualityScore += 30;
+        if (categories.length > 0) qualityScore += 20;
+        if (post.thumbnail) qualityScore += 15;
+        if (post.description && post.description.trim().length > 10) qualityScore += 10;
+        if (videoSources.length > 0) qualityScore += 20;
+
+        // Seeded/stochastic random temperature:
+        const randomMultiplier = 0.5 + Math.random() * 0.9;
+        const finalPopularScore = qualityScore * randomMultiplier;
+
+        return {
+          id: post.id,
+          title: post.title,
+          description: post.description || '',
+          thumbnail: thumbnail,
+          channelName: post.channel?.name || '',
+          channelId: post.channel_id,
+          categories: categories,
+          category: categories[0] || '',
+          actors: actors,
+          videoSources: videoSources,
+          createdAt: post.created_at,
+          actorCount: actors.length,
+          _popularScore: finalPopularScore
+        };
+      });
+
+      // Sort by popular score descending
+      scoredPosts.sort((a, b) => b._popularScore - a._popularScore);
+
+      const total = scoredPosts.length;
+      const paginated = scoredPosts.slice(skip, skip + perPage);
+
+      return reply.send({
+        success: true,
+        data: paginated,
+        pagination: {
+          page,
+          perPage,
+          total,
+          totalPages: Math.ceil(total / perPage)
+        }
+      });
+    } catch (error) {
+      logger.error('Error fetching popular posts:', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to fetch popular posts'
+      });
+    }
+  });
+
+  // ── Trending Videos (Velocity & Time-Decay Momentum Algorithm) ─────────────
+  fastify.get('/api/posts/trending', async (request, reply) => {
+    try {
+      const page = parseInt(request.query.page, 10) || 1;
+      const perPage = parseInt(request.query.perPage, 10) || 12;
+      const skip = (page - 1) * perPage;
+
+      // 1. Fetch recent posts
+      const { data: posts, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          channel:channels(id, name, logo),
+          post_actors(actor:actors(id, name)),
+          post_video_sources(platform, video_id)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (error) throw error;
+
+      // 2. Fetch categories
+      const postIds = (posts || []).map(p => p.id);
+      let categoriesMap = {};
+      if (postIds.length > 0) {
+        const { data: postCats } = await supabase
+          .from('post_categories')
+          .select('post_id, category:categories(name)')
+          .in('post_id', postIds);
+
+        if (postCats) {
+          postCats.forEach(pc => {
+            if (!categoriesMap[pc.post_id]) categoriesMap[pc.post_id] = [];
+            if (pc.category?.name) categoriesMap[pc.post_id].push(pc.category.name);
+          });
+        }
+      }
+
+      const now = Date.now();
+
+      // 3. Apply Velocity & Decay Algorithm
+      const trendingPosts = (posts || []).map(post => {
+        const categories = categoriesMap[post.id] || [];
+        const videoSources = (post.post_video_sources || []).map((vs, index) => ({
+          platform: vs.platform || 'streamtape',
+          name: (post.post_video_sources?.length || 0) > 1 ? `Server ${index + 1}` : 'Streamtape',
+          videoId: vs.video_id,
+          embedUrl: streamtapeService.getEmbedUrl(vs.video_id),
+          downloadUrl: streamtapeService.getDownloadUrl(vs.video_id),
+          thumbnail: streamtapeService.getDefaultThumbnailUrl(vs.video_id)
+        }));
+
+        const primaryVideoId = videoSources[0]?.videoId || '';
+        const thumbnail = buildThumbnailUrl(post.thumbnail, primaryVideoId);
+        const actors = (post.post_actors || []).map(pa => pa.actor?.name || '').filter(Boolean);
+
+        const postCreatedAt = post.created_at ? new Date(post.created_at).getTime() : now;
+        const hoursAgo = Math.max(0.1, (now - postCreatedAt) / (1000 * 60 * 60));
+
+        // Engagement points:
+        const actorWeight = actors.length ? 1.8 : 1.0;
+        const catWeight = categories.length ? 1.4 : 1.0;
+        const descWeight = post.description && post.description.length > 15 ? 1.2 : 1.0;
+        const basePoints = 500 * actorWeight * catWeight * descWeight;
+
+        // Time-decay formula (gravity = 1.35)
+        const trendingScore = basePoints / Math.pow(hoursAgo + 2, 1.35);
+
+        return {
+          id: post.id,
+          title: post.title,
+          description: post.description || '',
+          thumbnail: thumbnail,
+          channelName: post.channel?.name || '',
+          channelId: post.channel_id,
+          categories: categories,
+          category: categories[0] || '',
+          actors: actors,
+          videoSources: videoSources,
+          createdAt: post.created_at,
+          actorCount: actors.length,
+          _trendingScore: trendingScore
+        };
+      });
+
+      // Sort by trending score descending
+      trendingPosts.sort((a, b) => b._trendingScore - a._trendingScore);
+
+      const total = trendingPosts.length;
+      const paginated = trendingPosts.slice(skip, skip + perPage);
+
+      return reply.send({
+        success: true,
+        data: paginated,
+        pagination: {
+          page,
+          perPage,
+          total,
+          totalPages: Math.ceil(total / perPage)
+        }
+      });
+    } catch (error) {
+      logger.error('Error fetching trending posts:', error);
+      return reply.status(500).send({
+        success: false,
+        message: 'Failed to fetch trending posts'
+      });
+    }
+  });
+
+  // GET /api/posts/:id - single post details
   fastify.get('/api/posts/:id', async (request, reply) => {
     try {
       const { id } = request.params;
@@ -299,7 +429,7 @@ module.exports = async (fastify, opts) => {
         });
       }
 
-      const { data: post, error } = await supabase
+      let { data: post, error } = await supabase
         .from('posts')
         .select(`
           *,
@@ -308,69 +438,71 @@ module.exports = async (fastify, opts) => {
           post_video_sources(id, platform, video_id)
         `)
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      // Handle "no rows returned" error gracefully
-      if (error && error.code === 'PGRST116') {
+      // If not found and ID might be short ID / suffix, search by suffix
+      if (!post && id && id.length < 30) {
+        const { data: fallbackPosts } = await supabase
+          .from('posts')
+          .select(`
+            *,
+            channel:channels(id, name, logo, description),
+            post_actors(actor:actors(id, name, image, bio)),
+            post_video_sources(id, platform, video_id)
+          `)
+          .ilike('id', `%${id}`)
+          .limit(1);
+
+        if (fallbackPosts && fallbackPosts.length > 0) {
+          post = fallbackPosts[0];
+          error = null;
+        }
+      }
+
+      if (error || !post) {
         return reply.status(404).send({
           success: false,
           message: 'Post not found'
         });
       }
 
-      if (error) {
-        logger.error(`Error fetching post ${id}`, error);
-        return reply.status(500).send({
-          success: false,
-          message: 'Failed to fetch post'
-        });
-      }
-
-      if (!post) {
-        return reply.status(404).send({
-          success: false,
-          message: 'Post not found'
-        });
-      }
-
-      // Fetch all categories for this post from the junction table
+      // Fetch categories
       let categories = [];
       try {
-        const { data: postCats, error: catError } = await supabase
+        const { data: postCats } = await supabase
           .from('post_categories')
           .select('category:categories(name)')
-          .eq('post_id', id);
+          .eq('post_id', post.id);
 
-        if (catError) {
-          logger.warn(`Error fetching categories for post ${id}:`, catError.message);
-        } else {
-          categories = (postCats || [])
-            .map(pc => pc.category?.name)
-            .filter(Boolean);
-        }
+        categories = (postCats || [])
+          .map(pc => pc.category?.name)
+          .filter(Boolean);
       } catch (catErr) {
         logger.warn(`Error fetching categories for post ${id}:`, catErr.message);
       }
 
-      // Format post to include channelName for frontend compatibility
-      // Fetch thumbnail and preview from API on-demand
-      const [thumbnail, previewUrl] = await Promise.all([
-        getPostThumbnail(post),
-        getPostPreview(post)
-      ]);
-      
+      const videoSources = (post.post_video_sources || []).map((vs, index) => ({
+        id: vs.id,
+        platform: vs.platform || 'streamtape',
+        name: (post.post_video_sources?.length || 0) > 1 ? `Server ${index + 1}` : 'Streamtape',
+        videoId: vs.video_id,
+        embedUrl: streamtapeService.getEmbedUrl(vs.video_id),
+        downloadUrl: streamtapeService.getDownloadUrl(vs.video_id),
+        thumbnail: streamtapeService.getDefaultThumbnailUrl(vs.video_id)
+      }));
+
+      const primaryVideoId = videoSources[0]?.videoId || '';
+      const thumbnail = buildThumbnailUrl(post.thumbnail, primaryVideoId);
+
       const formattedPost = {
         ...post,
         channelName: post.channel?.name || '',
         categories: categories,
-        category: categories[0] || '', // First category for backward compatibility
+        category: categories[0] || '',
         actors: post.post_actors ? post.post_actors.map(pa => pa.actor?.name).filter(Boolean) : [],
-        videoSources: post.post_video_sources || [],
-        thumbnail: thumbnail, // Use API-fetched thumbnail
-        previewUrl: previewUrl // Use API-fetched preview
+        videoSources: videoSources,
+        thumbnail: thumbnail
       };
-
-      logger.info(`Post ${id} formatted with actors:`, formattedPost.actors);
 
       cacheService.set(cacheKey, formattedPost, 3600);
 
@@ -379,7 +511,7 @@ module.exports = async (fastify, opts) => {
         data: formattedPost
       });
     } catch (error) {
-      logger.error(`Error fetching post ${request.params.id}`, error);
+      logger.error(`Error fetching post ${request.params.id}:`, error);
       return reply.status(500).send({
         success: false,
         message: 'Failed to fetch post'
@@ -387,102 +519,93 @@ module.exports = async (fastify, opts) => {
     }
   });
 
+  // GET /api/posts/:id/video - video playback details & sources (super speedy, zero delay)
   fastify.get('/api/posts/:id/video', async (request, reply) => {
     try {
       const { id } = request.params;
 
-      const { data: post, error } = await supabase
+      const cacheKey = `post:video:${id}`;
+      const cached = cacheService.get(cacheKey);
+      if (cached) {
+        return reply.send({
+          success: true,
+          data: cached
+        });
+      }
+
+      let { data: post, error } = await supabase
         .from('posts')
         .select(`
-          *,
+          id,
+          title,
+          thumbnail,
           post_video_sources(id, platform, video_id)
         `)
         .eq('id', id)
-        .single();
+        .maybeSingle();
+
+      // If not found and ID might be short ID / suffix, search by suffix
+      if (!post && id && id.length < 30) {
+        const { data: fallbackPosts } = await supabase
+          .from('posts')
+          .select(`
+            id,
+            title,
+            thumbnail,
+            post_video_sources(id, platform, video_id)
+          `)
+          .ilike('id', `%${id}`)
+          .limit(1);
+
+        if (fallbackPosts && fallbackPosts.length > 0) {
+          post = fallbackPosts[0];
+          error = null;
+        }
+      }
 
       if (error || !post) {
-        // Handle "no rows returned" error gracefully
-        if (error && error.code === 'PGRST116') {
-          return reply.status(404).send({
-            success: false,
-            message: 'Post not found'
-          });
-        }
-        
         return reply.status(404).send({
           success: false,
           message: 'Post not found'
         });
       }
 
-      const videoSources = post.post_video_sources || [];
-      if (videoSources.length === 0) {
+      const rawSources = post.post_video_sources || [];
+      if (rawSources.length === 0) {
         return reply.status(404).send({
           success: false,
           message: 'No video sources found'
         });
       }
 
-      // Build video sources - return all available sources for server switching
-      // SERVER 01 = Seekstreaming (primary), SERVER 02 = Streamtape (secondary)
-      const sources = [];
+      const sources = rawSources.map((s, index) => {
+        const videoId = s.video_id;
+        return {
+          id: s.id,
+          platform: s.platform || 'streamtape',
+          name: rawSources.length > 1 ? `Server ${index + 1}` : 'Streamtape',
+          videoId: videoId,
+          embedUrl: streamtapeService.getEmbedUrl(videoId),
+          downloadUrl: streamtapeService.getDownloadUrl(videoId),
+          thumbnail: streamtapeService.getDefaultThumbnailUrl(videoId)
+        };
+      });
 
-      // Always add SERVER 01 (Seekstreaming) first
-      const seekSource = videoSources.find(s => s.platform === 'seekstreaming');
-      if (seekSource) {
-        sources.push({
-          platform: 'seekstreaming',
-          name: 'SERVER 01',
-          videoId: seekSource.video_id,
-          embedUrl: seekstreamingService.getPlayerUrl(seekSource.video_id),
-          downloadUrl: seekstreamingService.getDownloadUrl(seekSource.video_id),
-          thumbnail: null
-        });
-      }
+      const videoLink = sources[0] || null;
+      const resultData = {
+        postId: post.id,
+        videoLink: videoLink,
+        sources: sources
+      };
 
-      // Always add SERVER 02 (Streamtape) second
-      const streamtapeSource = videoSources.find(s => s.platform === 'streamtape');
-      if (streamtapeSource) {
-        const thumbKey = `video:streamtape:thumb:${streamtapeSource.video_id}`;
-        let thumbnail = cacheService.get(thumbKey);
-
-        if (!thumbnail) {
-          try {
-            thumbnail = await streamtapeService.getThumbnail(streamtapeSource.video_id);
-          } catch (e) {
-            thumbnail = `https://thumb.tapecontent.net/thumb/${streamtapeSource.video_id}/thumb.jpg`;
-          }
-        }
-
-        sources.push({
-          platform: 'streamtape',
-          name: 'SERVER 02',
-          videoId: streamtapeSource.video_id,
-          embedUrl: streamtapeService.getEmbedUrl(streamtapeSource.video_id),
-          downloadUrl: null,
-          thumbnail: thumbnail
-        });
-      }
-
-      // Primary video link (first available)
-      const videoLink = sources.length > 0 ? {
-        platform: sources[0].platform,
-        videoId: sources[0].videoId,
-        embedUrl: sources[0].embedUrl,
-        downloadUrl: sources[0].downloadUrl,
-        thumbnail: sources[0].thumbnail
-      } : null;
+      cacheService.set(cacheKey, resultData, 3600);
 
       return reply.send({
         success: true,
-        data: {
-          postId: id,
-          videoLink: videoLink,
-          sources: sources
-        }
+        data: resultData
       });
     } catch (error) {
-      logger.error(`Error fetching video for post ${request.params.id}`, error);
+      logger.error(`Error fetching video for post ${request.params.id}:`, error);
       return reply.status(500).send({
         success: false,
         message: 'Failed to fetch video'

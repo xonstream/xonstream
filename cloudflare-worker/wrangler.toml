@@ -1,0 +1,14 @@
+name = "xonstream-backend"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+SUPABASE_URL = "https://aiymraokgwtgsqytqxqu.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpeW1yYW9rZ3d0Z3NxeXRxeHF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1OTcwNTUsImV4cCI6MjA5MjE3MzA1NX0.M6Zr2Qh2EI8Oo8elalwrRby9jdr0aSj45TaMYoDBMBo"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpeW1yYW9rZ3d0Z3NxeXRxeHF1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjU5NzA1NSwiZXhwIjoyMDkyMTczMDU1fQ.6IT7bHtS1Mz7Zx6KbwZG0THQJ-se5MdgZ4uwPpoVvow"
+STREAMTAPE_LOGIN = "e468fce827befdfc7688"
+STREAMTAPE_KEY = "lQModxe16DU7Qm4"
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "xonstream"
+ADMIN_SECRET = "xonstream"

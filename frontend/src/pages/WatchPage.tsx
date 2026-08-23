@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams, Link, useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPost, fetchVideoLinks, fetchChannels, fetchActors, fetchPosts, fetchPlayerSettings } from '@/lib/api';
 import { addToHistory, toggleFavourite, getFavourites, toggleLike, getLikes } from '@/lib/store';
@@ -8,7 +8,7 @@ import PostBox from '@/components/PostBox';
 import LikeIcon from '@/components/LikeIcon';
 import { Share2, Plus, Star, Download, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { VideoLink, VideoSource } from '@/lib/types';
+import type { VideoLink, VideoSource, Post } from '@/lib/types';
 import { extractPostIdFromSlug } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 
@@ -33,25 +33,31 @@ function DownloadModal({ open, onClose, sources }: { open: boolean; onClose: () 
               <p className="text-sm">No download available</p>
             </div>
           ) : (
-            sources.map((source) => (
-              <a
-                key={source.platform}
-                href={source.downloadUrl || source.embedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={onClose}
-                className="flex items-center justify-between p-4 rounded-[12px] bg-gradient-to-r from-purple-500/20 to-purple-600/10 border border-purple-500/40 hover:border-purple-400 cursor-pointer group transition-all duration-200"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{source.name}</p>
-                  <p className="text-xs text-muted-foreground capitalize mt-0.5">{source.platform}</p>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/20 rounded-[20px] group-hover:bg-accent/40 transition-colors">
-                  <Download className="w-3.5 h-3.5 text-accent" />
-                  <span className="text-xs text-accent font-medium">Download</span>
-                </div>
-              </a>
-            ))
+            sources.map((source) => {
+              // Download link uses /v/ instead of /e/
+              const downloadHref = source.downloadUrl 
+                || (source.videoId ? `https://streamtape.com/v/${source.videoId}` : (source.embedUrl ? source.embedUrl.replace('/e/', '/v/') : ''));
+
+              return (
+                <a
+                  key={source.platform + (source.videoId || '')}
+                  href={downloadHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onClose}
+                  className="flex items-center justify-between p-4 rounded-[12px] bg-gradient-to-r from-purple-500/20 to-purple-600/10 border border-purple-500/40 hover:border-purple-400 cursor-pointer group transition-all duration-200"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{source.name}</p>
+                    <p className="text-xs text-muted-foreground capitalize mt-0.5">{source.platform}</p>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/20 rounded-[20px] group-hover:bg-accent/40 transition-colors">
+                    <Download className="w-3.5 h-3.5 text-accent" />
+                    <span className="text-xs text-accent font-medium">Download</span>
+                  </div>
+                </a>
+              );
+            })
           )}
         </div>
       </div>
@@ -90,46 +96,47 @@ function ChannelSubscribe({ channelName }: { channelName: string }) {
   const { data } = useQuery({ queryKey: ['channels'], queryFn: fetchChannels, staleTime: 300_000 });
   const ch = (data?.data ?? []).find(c => c.name === channelName);
   if (!ch) return null;
-  return <SubscribeButton channelId={ch.id} />;
+  return <SubscribeButton channelId={ch.id} channelName={ch.name} />;
 }
 
 // ── Actor Circle ────────────────────────────────────────────────────────────
 function ActorCircle({ actorName }: { actorName: string }) {
   const navigate = useNavigate();
-  const { data, isLoading, isError } = useQuery({ 
+  const [imgError, setImgError] = useState(false);
+  const { data } = useQuery({ 
     queryKey: ['actors'], 
     queryFn: fetchActors, 
-    staleTime: 300_000,
+    staleTime: 60_000,
     retry: 2,
   });
   
   const actors = data?.data ?? [];
-  const actor = actors.find(a => a.name.toLowerCase() === actorName.toLowerCase());
+  const actor = actors.find(a => a.name.trim().toLowerCase() === actorName.trim().toLowerCase());
   
   const handleClick = () => {
-    if (actor) {
+    if (actor?.id) {
       navigate(`/actor/${actor.id}`);
     } else {
-      navigate(`/search?actor=${encodeURIComponent(actorName)}`);
+      navigate(`/actor/${encodeURIComponent(actorName)}`);
     }
   };
   
   return (
     <div onClick={handleClick}
-      className="flex flex-col items-center gap-1.5 group cursor-pointer">
-      <div className="w-16 h-16 rounded-full bg-secondary overflow-hidden flex items-center justify-center text-lg font-bold text-muted-foreground uppercase group-hover:ring-2 group-hover:ring-accent/40 transition-all">
-        {actor?.image ? (
-          <div className="w-full h-full" style={{
-            backgroundImage: `url(${actor.image})`,
-            backgroundSize: `${Math.round((actor.cropZoom ?? 1) * 100)}%`,
-            backgroundPosition: `${actor.cropX ?? 50}% ${actor.cropY ?? 50}%`,
-            backgroundRepeat: 'no-repeat',
-          }} />
+      className="flex flex-col items-center gap-2 group cursor-pointer">
+      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-secondary border-2 border-white/10 overflow-hidden flex items-center justify-center text-lg font-bold text-muted-foreground uppercase shadow-md group-hover:scale-105 group-hover:border-accent group-hover:shadow-accent/20 transition-all duration-200">
+        {actor?.image && !imgError ? (
+          <img
+            src={actor.image}
+            alt={actorName}
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
         ) : (
-          <span>{actorName[0]}</span>
+          <span className="text-xl text-foreground/80 font-bold">{actorName ? actorName[0].toUpperCase() : '?'}</span>
         )}
       </div>
-      <span className="text-xs text-muted-foreground group-hover:text-accent transition-colors">
+      <span className="text-xs sm:text-sm font-medium text-muted-foreground group-hover:text-accent transition-colors max-w-[100px] text-center truncate">
         {actorName}
       </span>
     </div>
@@ -140,69 +147,94 @@ function ActorCircle({ actorName }: { actorName: string }) {
 export default function WatchPage() {
   const [params] = useSearchParams();
   const { slug } = useParams<{ slug?: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   
-  // Support both old query param format (?v=id) and new slug format (/video/slug-shortid)
+  // Get post passed via navigate state for instantaneous millisecond rendering
+  const initialPostFromState = (location.state as { post?: Post })?.post;
+
+  // Support both query param format (?v=id) and slug format (/video/slug--id or /video/slug-id)
   const directVideoId = params.get('v') || '';
-  const shortIdFromSlug = slug ? extractPostIdFromSlug(slug) : '';
+  const idFromSlug = slug ? extractPostIdFromSlug(slug) : '';
+  const currentTargetId = initialPostFromState?.id || directVideoId || idFromSlug || '';
   
-  // If we have a short ID from slug, we need to find the full post ID
-  const [resolvedVideoId, setResolvedVideoId] = useState(directVideoId || shortIdFromSlug || '');
+  const [resolvedVideoId, setResolvedVideoId] = useState(currentTargetId);
   
-  // Fetch posts to resolve short ID to full ID
   useEffect(() => {
-    if (shortIdFromSlug && !directVideoId) {
-      // We have a short ID, need to find matching post
+    if (currentTargetId && currentTargetId !== resolvedVideoId) {
+      setResolvedVideoId(currentTargetId);
+    }
+  }, [currentTargetId]);
+
+  // Fallback resolution for legacy short IDs if needed
+  useEffect(() => {
+    if (idFromSlug && !directVideoId && !initialPostFromState && idFromSlug.length < 15) {
       fetchPosts(1, 100).then(response => {
         if (response.success) {
           const matchingPost = response.data.find((post: any) => 
-            post.id.endsWith(shortIdFromSlug)
+            post.id.endsWith(idFromSlug)
           );
           if (matchingPost) {
             setResolvedVideoId(matchingPost.id);
-          } else {
-            // Post not found, show error
-            toast.error('Video not found');
           }
         }
-      }).catch(err => {
-        console.error('Failed to resolve video ID:', err);
-        toast.error('Failed to load video');
-      });
+      }).catch(() => {});
     }
-  }, [shortIdFromSlug, directVideoId]);
+  }, [idFromSlug, directVideoId, initialPostFromState]);
   
   const videoId = resolvedVideoId;
-  const [liked, setLiked] = useState(() => getLikes().includes(directVideoId || shortIdFromSlug || ''));
-  const [isFav, setIsFav] = useState(() => getFavourites().includes(params.get('v') || ''));
+  const [liked, setLiked] = useState(() => getLikes().includes(currentTargetId));
+  const [isFav, setIsFav] = useState(() => getFavourites().includes(currentTargetId));
   const [showDownload, setShowDownload] = useState(false);
 
   const { data: postData, isError: postError } = useQuery({
     queryKey: ['post', videoId],
     queryFn: () => fetchPost(videoId).catch((error) => {
-      // Silently handle errors - don't let them propagate to console
       return { success: false, data: null, error: error.message };
     }),
     enabled: !!videoId,
-    retry: 0,
+    initialData: (initialPostFromState && initialPostFromState.id === videoId)
+      ? { success: true, data: initialPostFromState }
+      : undefined,
     staleTime: 60_000,
   });
+
+  // Prepare initial videoData from initialPostFromState for 0ms player mount
+  const initialVideoData = useMemo(() => {
+    if (initialPostFromState && initialPostFromState.id === videoId && initialPostFromState.videoSources?.length) {
+      const srcList: VideoSource[] = initialPostFromState.videoSources.map((s: any, idx: number) => ({
+        platform: s.platform || 'streamtape',
+        name: initialPostFromState.videoSources.length > 1 ? `Server ${idx + 1}` : 'Streamtape',
+        videoId: s.videoId,
+        embedUrl: s.embedUrl || `https://streamtape.com/e/${s.videoId}`,
+        downloadUrl: s.downloadUrl || `https://streamtape.com/v/${s.videoId}`,
+        thumbnail: s.thumbnail || `https://thumb.tapecontent.net/thumb/${s.videoId}/thumb.jpg`
+      }));
+      return {
+        success: true,
+        data: {
+          postId: videoId,
+          videoLink: srcList[0] || null,
+          sources: srcList
+        }
+      };
+    }
+    return undefined;
+  }, [initialPostFromState, videoId]);
 
   const { data: videoData } = useQuery({
     queryKey: ['videoLinks', videoId],
     queryFn: () => fetchVideoLinks(videoId).catch((error) => {
-      // Silently handle errors - don't let them propagate to console
       return { success: false, data: { postId: videoId, videoLink: null, sources: [] }, error: error.message };
     }),
     enabled: !!videoId,
-    retry: 0,
-    staleTime: 0,  // always fresh — server ordering must be correct immediately
+    initialData: initialVideoData,
+    staleTime: 60_000,
   });
 
   const { data: relatedData } = useQuery({
     queryKey: ['posts', 1, 'all'],
     queryFn: () => import('@/lib/api').then(m => m.fetchPosts(1, 7)).catch(() => {
-      // Return empty array on error
       return { success: true, data: [] };
     }),
     retry: 0,
@@ -213,7 +245,6 @@ export default function WatchPage() {
   const { data: playerSettingsData } = useQuery({
     queryKey: ['playerSettings'],
     queryFn: () => fetchPlayerSettings().catch(() => {
-      // Return default settings on error
       return { success: true, data: { autoPlay: true, defaultServer: 'SERVER_01', updatedAt: '' } };
     }),
     retry: 0,
@@ -243,13 +274,77 @@ export default function WatchPage() {
   // Current embed URL based on selected server
   const embedUrl = sources[selectedServer]?.embedUrl ?? videoLink?.embedUrl ?? null;
 
+  // Update document title, meta tags, and structured JSON-LD data for maximum SEO
   useEffect(() => {
     if (post) {
       addToHistory(post.id);
       setIsFav(getFavourites().includes(post.id));
       setLiked(getLikes().includes(post.id));
+
+      const siteTitle = `${post.title} — Watch Online in HD | XON STREAM`;
+      const siteDesc = post.description || `Watch ${post.title} in Full HD quality for free on XON STREAM. High speed streaming.`;
+      const postThumb = post.thumbnail || 'https://xonstream.com/siteicon.ico';
+      const postUrl = window.location.href;
+
+      document.title = siteTitle;
+
+      // Update meta description
+      const metaDesc = document.querySelector('meta[name="description"]');
+      if (metaDesc) metaDesc.setAttribute('content', siteDesc);
+
+      // Open Graph Tags
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) ogTitle.setAttribute('content', siteTitle);
+      const ogDesc = document.querySelector('meta[property="og:description"]');
+      if (ogDesc) ogDesc.setAttribute('content', siteDesc);
+      const ogImg = document.querySelector('meta[property="og:image"]');
+      if (ogImg) ogImg.setAttribute('content', postThumb);
+      const ogUrl = document.querySelector('meta[property="og:url"]');
+      if (ogUrl) ogUrl.setAttribute('content', postUrl);
+
+      // Twitter Tags
+      const twTitle = document.querySelector('meta[property="twitter:title"]');
+      if (twTitle) twTitle.setAttribute('content', siteTitle);
+      const twDesc = document.querySelector('meta[property="twitter:description"]');
+      if (twDesc) twDesc.setAttribute('content', siteDesc);
+      const twImg = document.querySelector('meta[property="twitter:image"]');
+      if (twImg) twImg.setAttribute('content', postThumb);
+
+      // JSON-LD Structured VideoObject Schema
+      let schemaScript = document.getElementById('jsonld-video-schema') as HTMLScriptElement | null;
+      if (!schemaScript) {
+        schemaScript = document.createElement('script');
+        schemaScript.id = 'jsonld-video-schema';
+        schemaScript.type = 'application/ld+json';
+        document.head.appendChild(schemaScript);
+      }
+
+      schemaScript.textContent = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'VideoObject',
+        'name': post.title,
+        'description': siteDesc,
+        'thumbnailUrl': [postThumb],
+        'uploadDate': post.createdAt || new Date().toISOString(),
+        'embedUrl': embedUrl || `https://streamtape.com/e/${post.videoSources?.[0]?.videoId || ''}`,
+        'contentRating': 'adult',
+        'publisher': {
+          '@type': 'Organization',
+          'name': 'XON STREAM',
+          'logo': {
+            '@type': 'ImageObject',
+            'url': 'https://xonstream.com/siteicon.ico'
+          }
+        }
+      });
     }
-  }, [post]);
+
+    return () => {
+      // Clean up dynamic schema on unmount
+      const schemaScript = document.getElementById('jsonld-video-schema');
+      if (schemaScript) schemaScript.remove();
+    };
+  }, [post, embedUrl]);
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -259,15 +354,19 @@ export default function WatchPage() {
   const handleLike = () => {
     if (!videoId) return;
     const added = toggleLike(videoId);
+    toggleFavourite(videoId);
     setLiked(added);
-    toast.success(added ? 'Liked!' : 'Like Removed');
+    setIsFav(added);
+    toast.success(added ? 'Added to Liked Videos! 👍' : 'Removed from Liked Videos');
   };
 
   const handleFavourite = () => {
     if (!videoId) return;
-    const added = toggleFavourite(videoId);
+    const added = toggleLike(videoId);
+    toggleFavourite(videoId);
     setIsFav(added);
-    toast.success(added ? 'Added to Favourites!' : 'Removed from Favourites');
+    setLiked(added);
+    toast.success(added ? 'Added to Liked Videos! 👍' : 'Removed from Liked Videos');
   };
 
   return (
@@ -380,7 +479,7 @@ export default function WatchPage() {
             {post.createdAt && (
               <p className="text-sm text-muted-foreground mb-2">{post.createdAt}</p>
             )}
-            {post.description && post.description.trim() && (
+            {post.description && post.description.trim() && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(post.description.trim()) && (
               <p className="text-sm text-foreground mb-3">{post.description}</p>
             )}
             {post.categories && post.categories.length > 0 && (
@@ -412,10 +511,10 @@ export default function WatchPage() {
       </div>
 
       {/* ── Related ─────────────────────────────────────────────────── */}
-      <div className="lg:w-96 flex-shrink-0 px-4 sm:px-0 lg:px-0 mt-8 lg:mt-0">
-        <h3 className="text-sm font-semibold text-foreground mb-4">Related Videos</h3>
+      <div className="lg:w-96 flex-shrink-0 px-4 sm:px-0 lg:px-0 mt-6 lg:mt-0">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Related Videos</h3>
         {relatedPosts.length > 0 ? (
-          <div className="grid grid-cols-1 gap-y-8">
+          <div className="grid grid-cols-1 gap-y-3 sm:gap-y-4">
             {relatedPosts.map(p => <PostBox key={p.id} post={p} />)}
           </div>
         ) : (

@@ -147,12 +147,6 @@ const startServer = async () => {
 
     logger.info('Supabase configuration loaded');
 
-    // Support optional custom domain from env (e.g. your production custom domain)
-    const customOrigin = process.env.CORS_ORIGIN;
-    if (customOrigin && !allowedOrigins.includes(customOrigin)) {
-      allowedOrigins.push(customOrigin);
-    }
-
     await fastify.register(cors, {
       origin: (origin, cb) => {
         if (!origin) {
@@ -174,10 +168,7 @@ const startServer = async () => {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      // 'Cookie' must be listed so browsers send the session cookie on cross-origin requests.
-      // 'Set-Cookie' must be exposed so the browser can store the cookie set by the login response.
-      allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
-      exposedHeaders: ['Set-Cookie'],
+      allowedHeaders: ['Content-Type', 'Authorization']
     });
 
     await fastify.register(helmet, {
@@ -230,6 +221,129 @@ const startServer = async () => {
       }
     });
 
+    // SEO: Dynamic robots.txt
+    fastify.get('/robots.txt', async (request, reply) => {
+      reply.type('text/plain');
+      return `User-agent: *
+Allow: /
+Disallow: /meow
+Disallow: /meow/*
+Disallow: /api/admin/*
+
+Sitemap: https://xonstream.com/sitemap.xml`;
+    });
+
+    // SEO: Dynamic sitemap.xml
+    fastify.get('/sitemap.xml', async (request, reply) => {
+      try {
+        const baseUrl = 'https://xonstream.com';
+        const now = new Date().toISOString().split('T')[0];
+
+        // Fetch posts, channels, actors, categories for sitemap
+        const [postsRes, channelsRes, actorsRes, categoriesRes] = await Promise.allSettled([
+          supabase.from('posts').select('id, title, created_at').order('created_at', { ascending: false }).limit(5000),
+          supabase.from('channels').select('id, name'),
+          supabase.from('actors').select('id, name'),
+          supabase.from('categories').select('id, name')
+        ]);
+
+        const posts = postsRes.status === 'fulfilled' && postsRes.value.data ? postsRes.value.data : [];
+        const channels = channelsRes.status === 'fulfilled' && channelsRes.value.data ? channelsRes.value.data : [];
+        const actors = actorsRes.status === 'fulfilled' && actorsRes.value.data ? actorsRes.value.data : [];
+        const categories = categoriesRes.status === 'fulfilled' && categoriesRes.value.data ? categoriesRes.value.data : [];
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/trending</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/popular</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/channels</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/actors</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+
+        // Categories
+        categories.forEach(c => {
+          xml += `
+  <url>
+    <loc>${baseUrl}/?category=${encodeURIComponent(c.name)}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+        });
+
+        // Channels
+        channels.forEach(ch => {
+          xml += `
+  <url>
+    <loc>${baseUrl}/channel/${ch.id}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+        });
+
+        // Actors
+        actors.forEach(act => {
+          xml += `
+  <url>
+    <loc>${baseUrl}/actor/${act.id}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+        });
+
+        // Video Posts
+        posts.forEach(p => {
+          const slug = p.title
+            ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+            : 'video';
+          const postDate = p.created_at ? new Date(p.created_at).toISOString().split('T')[0] : now;
+          xml += `
+  <url>
+    <loc>${baseUrl}/video/${slug}--${p.id}</loc>
+    <lastmod>${postDate}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>`;
+        });
+
+        xml += `\n</urlset>`;
+
+        reply.type('application/xml');
+        return xml;
+      } catch (err) {
+        logger.error('Error generating sitemap:', err);
+        reply.type('application/xml');
+        return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://xonstream.com/</loc></url></urlset>`;
+      }
+    });
+
     await adminAuth(fastify);
 
     await fastify.register(postsRoutes);
@@ -250,8 +364,6 @@ const startServer = async () => {
     logger.info('Starting cache warmup...');
     await cacheService.warmCache();
     logger.info('Cache warmup completed');
-
-    ramMonitor.start();
 
     logger.info(`Starting server on port ${env.PORT}...`);
     await fastify.listen({
@@ -287,13 +399,11 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception', error);
-  gracefulShutdown('uncaughtException');
+  logger.error('Uncaught Exception:', error);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection', new Error(String(reason)));
-  gracefulShutdown('unhandledRejection');
+  logger.error('Unhandled Rejection:', reason);
 });
 
 startServer();

@@ -61,44 +61,156 @@
   .light {
     --background: 0 0% 100%;
     --foreground: 0 0% 6%;
-    
     --card: 0 0% 98%;
     --card-foreground: 0 0% 6%;
-    
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 6%;
-    
     --primary: 0 100% 50%;
     --primary-foreground: 0 0% 100%;
-    
     --secondary: 0 0% 95%;
     --secondary-foreground: 0 0% 6%;
-    
     --muted: 0 0% 90%;
     --muted-foreground: 0 0% 38%;
-    
     --accent: 210 100% 62%;
     --accent-foreground: 0 0% 100%;
-    
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    
     --border: 0 0% 88%;
     --input: 0 0% 88%;
     --ring: 210 100% 62%;
-    
     --bg-tertiary: 0 0% 90%;
     --text-secondary: 0 0% 38%;
     --text-muted: 0 0% 56%;
-    
-    --sidebar-background: 0 0% 95%;
-    --sidebar-foreground: 0 0% 38%;
-    --sidebar-primary: 0 100% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 90%;
-    --sidebar-accent-foreground: 0 0% 6%;
-    --sidebar-border: 0 0% 88%;
-    --sidebar-ring: 210 100% 62%;
+  }
+
+  /* 🖤 Pure Dark (Pitch Black OLED) */
+  .pure-dark {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 8%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 190 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
+    --ring: 190 100% 50%;
+    --bg-tertiary: 0 0% 8%;
+    --text-secondary: 0 0% 75%;
+    --text-muted: 0 0% 50%;
+  }
+
+  /* ⚡ Lightning (Electric Cyberpunk Violet) */
+  .lightning {
+    --background: 265 45% 5%;
+    --foreground: 260 20% 98%;
+    --card: 265 40% 9%;
+    --card-foreground: 260 20% 98%;
+    --popover: 265 40% 9%;
+    --popover-foreground: 260 20% 98%;
+    --primary: 270 100% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 265 35% 15%;
+    --secondary-foreground: 260 20% 98%;
+    --muted: 265 30% 14%;
+    --muted-foreground: 265 20% 65%;
+    --accent: 270 100% 65%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 265 30% 18%;
+    --input: 265 30% 18%;
+    --ring: 270 100% 65%;
+    --bg-tertiary: 265 35% 14%;
+    --text-secondary: 265 25% 75%;
+    --text-muted: 265 20% 50%;
+  }
+
+  /* 🌊 Sky Blue (Ocean Sapphire) */
+  .sky-blue {
+    --background: 215 50% 5%;
+    --foreground: 210 20% 98%;
+    --card: 215 45% 9%;
+    --card-foreground: 210 20% 98%;
+    --popover: 215 45% 9%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 198 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 40% 15%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 215 35% 14%;
+    --muted-foreground: 215 25% 65%;
+    --accent: 198 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 35% 18%;
+    --input: 215 35% 18%;
+    --ring: 198 100% 50%;
+    --bg-tertiary: 215 40% 14%;
+    --text-secondary: 215 30% 75%;
+    --text-muted: 215 25% 50%;
+  }
+
+  /* 🍃 Greenify (Matrix Emerald & Neon Mint) */
+  .greenify {
+    --background: 155 50% 4%;
+    --foreground: 150 20% 98%;
+    --card: 155 40% 8%;
+    --card-foreground: 150 20% 98%;
+    --popover: 155 40% 8%;
+    --popover-foreground: 150 20% 98%;
+    --primary: 150 100% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 155 35% 14%;
+    --secondary-foreground: 150 20% 98%;
+    --muted: 155 30% 13%;
+    --muted-foreground: 155 25% 65%;
+    --accent: 150 100% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 155 30% 17%;
+    --input: 155 30% 17%;
+    --ring: 150 100% 45%;
+    --bg-tertiary: 155 35% 13%;
+    --text-secondary: 155 30% 75%;
+    --text-muted: 155 25% 50%;
+  }
+
+  /* 🌹 Crimson (Luxury Velvet Ruby) */
+  .crimson {
+    --background: 345 45% 5%;
+    --foreground: 340 20% 98%;
+    --card: 345 40% 9%;
+    --card-foreground: 340 20% 98%;
+    --popover: 345 40% 9%;
+    --popover-foreground: 340 20% 98%;
+    --primary: 345 100% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 345 35% 15%;
+    --secondary-foreground: 340 20% 98%;
+    --muted: 345 30% 14%;
+    --muted-foreground: 345 25% 65%;
+    --accent: 345 100% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 345 30% 18%;
+    --input: 345 30% 18%;
+    --ring: 345 100% 55%;
+    --bg-tertiary: 345 35% 14%;
+    --text-secondary: 345 30% 75%;
+    --text-muted: 345 25% 50%;
   }
 }
 
@@ -197,6 +309,18 @@
   }
 }
 
+/* Smooth tap & active micro-interactions */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-press {
+  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.1s ease;
+}
+.touch-press:active {
+  transform: scale(0.97);
+}
+
 /* Step 02: Ensure cursor is always visible on video player — applies to wrapper and iframe element */
 .aspect-video {
   cursor: default !important;
@@ -211,3 +335,23 @@
 div[style*="cursor: default"] * {
   cursor: default;
 }
+
+@keyframes ringRipple {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 16px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.animate-ring-ripple {
+  animation: ringRipple 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+

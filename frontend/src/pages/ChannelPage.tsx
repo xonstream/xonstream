@@ -23,6 +23,13 @@ export default function ChannelPage() {
   const posts = channelData?.data?.posts ?? [];
   const totalPages = channelData?.data?.pagination?.totalPages ?? 1;
 
+  // Dynamic SEO metadata
+  useState(() => {
+    if (channel?.name) {
+      document.title = `${channel.name} — Videos and Updates | XON STREAM`;
+    }
+  });
+
   if (!channelId) {
     return <div className="flex items-center justify-center min-h-[60vh] text-muted-foreground">Channel not found</div>;
   }
@@ -49,14 +56,14 @@ export default function ChannelPage() {
       {/* Banner */}
       {channel?.banner && (
         <div className="h-44 lg:h-48 overflow-hidden mx-4 rounded-[12px]">
-          <img src={channel.banner} alt={channel.name} className="w-full h-full object-cover" />
+          <img src={channel.banner} alt={channel.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
         </div>
       )}
 
       {/* Info */}
       <div className="p-4 flex flex-col sm:flex-row items-start gap-4">
         {channel?.logo ? (
-          <img src={channel.logo} alt={channel?.name} className={`w-20 h-20 rounded-full border-4 border-background ${channel?.banner ? '-mt-10' : ''}`} />
+          <img src={channel.logo} alt={channel?.name} className={`w-20 h-20 rounded-full border-4 border-background object-cover ${channel?.banner ? '-mt-10' : ''}`} loading="lazy" decoding="async" />
         ) : (
           <div className={`w-20 h-20 rounded-full border-4 border-background bg-secondary flex items-center justify-center text-2xl font-bold text-muted-foreground ${channel?.banner ? '-mt-10' : ''}`}>
             {channel?.name?.[0] ?? '?'}
@@ -78,7 +85,7 @@ export default function ChannelPage() {
 
       {/* Grid */}
       {isLoading && (
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
+        <div className="p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="animate-pulse">
               <div className="aspect-video rounded-[12px] bg-secondary" />
@@ -87,7 +94,7 @@ export default function ChannelPage() {
         </div>
       )}
       {posts.length > 0 && (
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
+        <div className="p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6">
           {posts.map(p => <PostBox key={p.id} post={p} />)}
         </div>
       )}

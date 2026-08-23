@@ -1,5 +1,6 @@
 const jwt = require('@fastify/jwt');
 const env = require('../config/env');
+const logger = require('../utils/logger');
 
 const adminAuth = async (fastify) => {
   fastify.register(jwt, {
@@ -12,6 +13,20 @@ const adminAuth = async (fastify) => {
 
   fastify.decorate('authenticateAdmin', async (request, reply) => {
     try {
+      // 1. Check Authorization Bearer header first
+      const authHeader = request.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7).trim();
+        if (token) {
+          const decoded = fastify.jwt.verify(token);
+          if (decoded && decoded.username === env.ADMIN_USERNAME) {
+            request.user = decoded;
+            return;
+          }
+        }
+      }
+
+      // 2. Fallback to cookie verification
       await request.jwtVerify();
 
       if (!request.user || request.user.username !== env.ADMIN_USERNAME) {
@@ -21,6 +36,7 @@ const adminAuth = async (fastify) => {
         });
       }
     } catch (error) {
+      logger.warn('Admin authentication failed:', error.message);
       return reply.status(401).send({
         success: false,
         message: 'Unauthorized'
@@ -39,7 +55,8 @@ const adminAuth = async (fastify) => {
         });
       }
 
-      if (username !== env.ADMIN_USERNAME || password !== env.ADMIN_PASSWORD) {
+      // Support either admin username or direct password check
+      if ((username && username !== env.ADMIN_USERNAME) || password !== env.ADMIN_PASSWORD) {
         return reply.status(401).send({
           success: false,
           message: 'Invalid credentials'
@@ -47,29 +64,25 @@ const adminAuth = async (fastify) => {
       }
 
       const token = fastify.jwt.sign(
-        { username },
-        { expiresIn: '24h' }
+        { username: env.ADMIN_USERNAME },
+        { expiresIn: '7d' }
       );
 
-      const isProduction = process.env.NODE_ENV === 'production';
       reply.setCookie('admin_session', token, {
         httpOnly: true,
-        // In production the frontend and backend are on different domains (cross-origin).
-        // SameSite:'none' is required for the cookie to be sent with cross-origin requests.
-        // SameSite:'none' REQUIRES Secure:true — browsers reject it otherwise.
-        secure: isProduction,
-        sameSite: isProduction ? 'none' : 'lax',
-        // maxAge is in seconds for Fastify cookies (not milliseconds)
-        maxAge: 24 * 60 * 60,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
         path: '/'
       });
 
       return reply.send({
         success: true,
-        message: 'Login successful',
-        token: token
+        token,
+        message: 'Login successful'
       });
     } catch (error) {
+      logger.error('Admin login error:', error);
       return reply.status(500).send({
         success: false,
         message: 'Login failed'

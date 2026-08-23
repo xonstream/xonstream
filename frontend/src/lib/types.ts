@@ -3,7 +3,7 @@ export interface Video {
   title: string;
   thumbnail: string;
   duration: string;
-  seekstreamingId: string;
+  videoId?: string;
   channelId: string;
   categoryIds: string[];
   description: string;
@@ -26,7 +26,7 @@ export interface VideoSource {
 
 // For admin forms (minimal data)
 export interface VideoSourceInput {
-  platform: 'seekstreaming' | 'streamtape';
+  platform: 'streamtape' | string;
   videoId: string;
 }
 
@@ -44,11 +44,14 @@ export interface Post {
   description: string;
   actors: string[];
   channelName: string;
+  channelId?: string;
   categories: string[];
+  category?: string;
   thumbnail: string;
   previewUrl?: string; // Animated preview for hover (WebP)
   videoSources: VideoSource[];
   createdAt: string;
+  actorCount?: number;
 }
 
 export interface Pagination {

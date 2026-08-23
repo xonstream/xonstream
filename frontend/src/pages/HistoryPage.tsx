@@ -37,8 +37,8 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="p-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+    <div className="p-2 sm:p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-bold text-foreground">Watch History 🕐 24hr</h1>
         {historyPosts.length > 0 && (
           <button onClick={handleClear}
@@ -49,7 +49,7 @@ export default function HistoryPage() {
       </div>
 
       {historyPosts.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-4 sm:gap-y-6">
           {paginated.map(p => <PostBox key={p.id} post={p} />)}
         </div>
       ) : (

@@ -13,21 +13,45 @@ const STORAGE_KEYS = {
   ACTORS_DB: 'vidstream_actors',
   CATEGORIES_DB: 'vidstream_categories',
   SETTINGS: 'vidstream_settings',
+  ADMIN_TOKEN: 'vidstream_admin_token',
 };
 
-// Admin authentication is handled by backend API only
-// No admin credentials should be in frontend
-
-export function getTheme(): 'dark' | 'light' {
-  return (localStorage.getItem(STORAGE_KEYS.THEME) as 'dark' | 'light') || 'dark';
+// Admin authentication is handled by backend API
+export function getAdminToken(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
 }
 
-export function setTheme(theme: 'dark' | 'light') {
+export type ThemeMode = 'dark' | 'pure-dark' | 'lightning' | 'sky-blue' | 'greenify' | 'crimson' | 'light';
+
+export interface ThemeConfig {
+  id: ThemeMode;
+  name: string;
+  badge: string;
+  icon: string;
+  bgPreview: string;
+  accentPreview: string;
+}
+
+export const THEMES: ThemeConfig[] = [
+  { id: 'dark', name: 'Cyber Dark', badge: 'Default', icon: '🌌', bgPreview: '#0f1017', accentPreview: '#3b82f6' },
+  { id: 'pure-dark', name: 'Pure OLED', badge: 'Pitch Black', icon: '🖤', bgPreview: '#000000', accentPreview: '#06b6d4' },
+  { id: 'lightning', name: 'Lightning', badge: 'Cyberpunk', icon: '⚡', bgPreview: '#120b22', accentPreview: '#a855f7' },
+  { id: 'sky-blue', name: 'Sky Blue', badge: 'Sapphire', icon: '🌊', bgPreview: '#091322', accentPreview: '#38bdf8' },
+  { id: 'greenify', name: 'Greenify', badge: 'Emerald', icon: '🍃', bgPreview: '#061910', accentPreview: '#10b981' },
+  { id: 'crimson', name: 'Crimson', badge: 'Ruby Velvet', icon: '🌹', bgPreview: '#1a080d', accentPreview: '#f43f5e' },
+  { id: 'light', name: 'Daylight', badge: 'Clean Light', icon: '☀️', bgPreview: '#f8fafc', accentPreview: '#2563eb' },
+];
+
+export function getTheme(): ThemeMode {
+  return (localStorage.getItem(STORAGE_KEYS.THEME) as ThemeMode) || 'dark';
+}
+
+export function setTheme(theme: ThemeMode) {
   localStorage.setItem(STORAGE_KEYS.THEME, theme);
-  if (theme === 'light') {
-    document.documentElement.classList.add('light');
-  } else {
-    document.documentElement.classList.remove('light');
+  const root = document.documentElement;
+  root.classList.remove('light', 'pure-dark', 'lightning', 'sky-blue', 'greenify', 'crimson');
+  if (theme !== 'dark') {
+    root.classList.add(theme);
   }
 }
 
@@ -36,9 +60,20 @@ export function initTheme() {
   setTheme(theme);
 }
 
-export function getCurrentUser(): { username: string; email: string; isAdmin: boolean } | null {
+export function getCurrentUser(): { username: string; email: string; isAdmin: boolean; token?: string } | null {
   const data = localStorage.getItem(STORAGE_KEYS.USER);
-  return data ? JSON.parse(data) : null;
+  const token = localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+  if (data) {
+    const user = JSON.parse(data);
+    if (token && user.isAdmin) {
+      user.token = token;
+    }
+    return user;
+  }
+  if (token) {
+    return { username: 'admin', email: 'admin@xonstream.com', isAdmin: true, token };
+  }
+  return null;
 }
 
 export function signIn(username: string, password: string, rememberMe: boolean): { success: boolean; error?: string; isAdmin?: boolean } {
@@ -54,10 +89,12 @@ export function signIn(username: string, password: string, rememberMe: boolean):
 }
 
 // Admin session storage — called AFTER successful backend authentication
-// Password validation happens in backend only
-export function setAdminSession(): void {
+export function setAdminSession(token?: string): void {
   const user = { username: 'admin', email: 'admin@xonstream.com', isAdmin: true };
   localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+  if (token) {
+    localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, token);
+  }
 }
 
 export function signUp(username: string, email: string, password: string): { success: boolean; error?: string } {
@@ -72,6 +109,7 @@ export function signUp(username: string, email: string, password: string): { suc
 
 export function signOut() {
   localStorage.removeItem(STORAGE_KEYS.USER);
+  localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.REMEMBER_ME);
 }
 

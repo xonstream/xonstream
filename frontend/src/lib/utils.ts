@@ -21,26 +21,31 @@ export function slugify(text: string): string {
 
 /**
  * Generate video URL path from post ID and title
- * Creates clean, SEO-friendly URLs
- * Example: { id: 'sync-1775299225650-ibakh9', title: 'My Video' } -> '/video/my-video'
+ * Creates clean, SEO-friendly URLs with full postId for millisecond resolution
+ * Example: { id: 'sync-1775299225650-ibakh9', title: 'My Video' } -> '/video/my-video--sync-1775299225650-ibakh9'
  */
 export function generateVideoUrl(postId: string, title: string): string {
   const slug = slugify(title);
-  // Use short ID (last 8 chars) for uniqueness but keep URL clean
-  const shortId = postId.slice(-8);
-  return `/video/${slug}-${shortId}`;
+  return slug ? `/video/${slug}--${postId}` : `/video/${postId}`;
 }
 
 /**
  * Extract post ID from video URL slug
- * Handles both full ID and short ID formats
- * Example: "/video/my-video-ibakh9" -> needs to match with full ID ending in "ibakh9"
+ * Handles double-dash, raw ID, and legacy single-dash formats
  */
-export function extractPostIdFromSlug(slug: string): string | null {
-  // Slug format: title-shortid (last 8 chars of full ID)
+export function extractPostIdFromSlug(slug: string): string {
+  if (!slug) return '';
+  if (slug.includes('--')) {
+    return slug.split('--').pop() || slug;
+  }
+  if (/^[0-9a-f-]{36}$/i.test(slug) || slug.startsWith('sync-') || slug.startsWith('post-') || slug.startsWith('st-')) {
+    return slug;
+  }
   const lastDashIndex = slug.lastIndexOf('-');
-  if (lastDashIndex === -1) return null;
-  return slug.substring(lastDashIndex + 1);
+  if (lastDashIndex !== -1) {
+    return slug.substring(lastDashIndex + 1);
+  }
+  return slug;
 }
 
 /**
