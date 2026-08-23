@@ -1,11 +1,11 @@
 import type { Post, VideoLink, VideoSource, PaginatedResponse, Channel, Actor } from './types';
 import { getAdminToken } from './store';
 
-// Backend API URL from environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Backend API URL from environment variable with fallback to live Cloudflare Worker
+const rawApiBase = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? 'https://xonstream.xonstream.workers.dev' : 'http://localhost:3000');
 
-// Export API base
-export const API_BASE = API_BASE_URL !== undefined ? API_BASE_URL : '';
+// Export normalized API base without trailing slashes
+export const API_BASE = (rawApiBase || '').replace(/\/+$/, '');
 
 // Helper for admin request headers
 export function getAdminHeaders(extra: Record<string, string> = {}): HeadersInit {
