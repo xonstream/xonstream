@@ -1028,8 +1028,22 @@ app.get('/api/admin/channels', adminAuthMiddleware, async (c) => {
 app.post('/api/admin/channels', adminAuthMiddleware, async (c) => {
   try {
     const body: any = await c.req.json().catch(() => ({}));
+    const { name, logo, description } = body;
+    if (!name || !String(name).trim()) {
+      return c.json({ success: false, message: 'Channel name is required' }, 400);
+    }
+
     const supabase = getSupabase(c.env);
-    const { data, error } = await supabase.from('channels').insert(body).select().single();
+    const { data, error } = await supabase
+      .from('channels')
+      .insert({
+        name: String(name).trim(),
+        logo: logo || '',
+        description: description || ''
+      })
+      .select()
+      .single();
+
     if (error) throw error;
     return c.json({ success: true, data });
   } catch (error: any) {
@@ -1042,7 +1056,19 @@ app.put('/api/admin/channels/:id', adminAuthMiddleware, async (c) => {
     const id = c.req.param('id');
     const body: any = await c.req.json().catch(() => ({}));
     const supabase = getSupabase(c.env);
-    const { data, error } = await supabase.from('channels').update(body).eq('id', id).select().single();
+
+    const updateData: Record<string, any> = {};
+    if (body.name !== undefined) updateData.name = String(body.name).trim();
+    if (body.logo !== undefined) updateData.logo = body.logo || '';
+    if (body.description !== undefined) updateData.description = body.description || '';
+
+    const { data, error } = await supabase
+      .from('channels')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
     if (error) throw error;
     return c.json({ success: true, data });
   } catch (error: any) {
@@ -1073,20 +1099,14 @@ app.post('/api/admin/channels/bulk-create', adminAuthMiddleware, async (c) => {
     if (Array.isArray(items) && items.length > 0) {
       channelRows = items.map((i: any) => ({
         name: String(i.name || '').trim(),
-        handle: i.handle || (i.name ? i.name.toLowerCase().replace(/[^a-z0-9]/g, '') : ''),
         logo: i.logo || '',
-        banner: i.banner || '',
-        description: i.description || '',
-        verified: i.verified ?? true
+        description: i.description || ''
       })).filter(ch => ch.name);
     } else if (Array.isArray(names) && names.length > 0) {
       channelRows = names.map((n: string) => ({
         name: String(n || '').trim(),
-        handle: String(n || '').toLowerCase().replace(/[^a-z0-9]/g, ''),
         logo: '',
-        banner: '',
-        description: '',
-        verified: true
+        description: ''
       })).filter(ch => ch.name);
     }
 
@@ -1341,30 +1361,51 @@ app.put('/api/admin/settings/player', adminAuthMiddleware, async (c) => {
 app.get('/api/admin/streamtape/videos', adminAuthMiddleware, async (c) => {
   try {
     const supabase = getSupabase(c.env);
-    const [streamtapeFiles, existingSourcesRes] = await Promise.all([
+    const [streamtapeFiles, existingSourcesRes, existingPostsRes] = await Promise.all([
       getAllStreamtapeFiles('', c.env),
-      supabase.from('post_video_sources').select('video_id, post_id').eq('platform', 'streamtape')
+      supabase.from('post_video_sources').select('video_id, post_id').eq('platform', 'streamtape'),
+      supabase.from('posts').select('id, title, thumbnail')
     ]);
 
     const existingVideoIds = new Set(
       (existingSourcesRes.data || []).map((s: any) => s.video_id).filter(Boolean)
     );
+    const existingTitles = new Set(
+      (existingPostsRes.data || []).map((p: any) => stripVideoExtensions(p.title).toLowerCase()).filter(Boolean)
+    );
+    const existingThumbnails = (existingPostsRes.data || []).map((p: any) => p.thumbnail).filter(Boolean);
 
-    const unimported = streamtapeFiles.filter((f: any) => f.id && !existingVideoIds.has(f.id));
+    const unimported = streamtapeFiles.filter((f: any) => {
+      const vid = f.linkid || f.id;
+      if (!vid || existingVideoIds.has(vid)) return false;
+      const cleanTitle = stripVideoExtensions(f.name).toLowerCase();
+      if (existingTitles.has(cleanTitle)) return false;
+      for (const thumb of existingThumbnails) {
+        if (thumb && thumb.includes(vid)) return false;
+      }
+      return true;
+    });
 
-    const videoIdsToFetch = unimported.map((f: any) => f.id);
+    const videoIdsToFetch = unimported.map((f: any) => f.linkid || f.id);
     const thumbMap = await getBatchThumbnails(videoIdsToFetch, c.env);
 
-    const items = unimported.map((f: any) => ({
-      videoId: f.id,
-      name: f.name || 'Untitled Video',
-      title: stripVideoExtensions(f.name || 'Untitled Video'),
-      size: f.size || 0,
-      thumbnail: thumbMap[f.id] || getDefaultThumbnailUrl(f.id),
-      embedUrl: getEmbedUrl(f.id),
-      alreadyExists: false,
-      existingPostId: null
-    }));
+    const items = unimported.map((f: any) => {
+      const vid = f.linkid || f.id;
+      const cleanTitle = stripVideoExtensions(f.name || 'Untitled Video');
+      const realThumb = thumbMap[vid] || getDefaultThumbnailUrl(vid);
+
+      return {
+        videoId: vid,
+        name: f.name || 'Untitled Video',
+        title: cleanTitle || f.name,
+        size: f.size || 0,
+        thumbnail: realThumb,
+        embedUrl: getEmbedUrl(vid),
+        downloadUrl: getDownloadUrl(vid),
+        alreadyExists: false,
+        existingPostId: null
+      };
+    });
 
     return c.json({
       success: true,
@@ -1374,6 +1415,85 @@ app.get('/api/admin/streamtape/videos', adminAuthMiddleware, async (c) => {
     });
   } catch (error: any) {
     return c.json({ success: false, count: 0, data: [], message: error.message || 'Streamtape fetch error' }, 500);
+  }
+});
+
+app.post('/api/admin/streamtape/create-post', adminAuthMiddleware, async (c) => {
+  try {
+    const body: any = await c.req.json().catch(() => ({}));
+    const { title, videoId, thumbnail, channelId, channelName, categoryIds, actorNames, description } = body;
+
+    if (!videoId) {
+      return c.json({ success: false, message: 'Streamtape videoId is required' }, 400);
+    }
+
+    const supabase = getSupabase(c.env);
+    let resolvedChannelId = channelId || null;
+
+    if (!resolvedChannelId && channelName && channelName.trim()) {
+      const { data: existCh } = await supabase.from('channels').select('id').ilike('name', channelName.trim()).maybeSingle();
+      if (existCh) {
+        resolvedChannelId = existCh.id;
+      } else {
+        const { data: newCh } = await supabase.from('channels').insert({ name: channelName.trim() }).select('id').single();
+        if (newCh) resolvedChannelId = newCh.id;
+      }
+    }
+
+    const postTitle = stripVideoExtensions(title || 'Untitled Video');
+    const postThumb = (thumbnail && !thumbnail.endsWith('/thumb.jpg'))
+      ? thumbnail
+      : getDefaultThumbnailUrl(videoId);
+
+    const firstCatId = Array.isArray(categoryIds) && categoryIds.length > 0 ? categoryIds[0] : null;
+
+    const { data: newPost, error: postErr } = await supabase
+      .from('posts')
+      .insert({
+        title: postTitle,
+        description: cleanDescription(description),
+        thumbnail: postThumb,
+        channel_id: resolvedChannelId,
+        category_id: firstCatId
+      })
+      .select()
+      .single();
+
+    if (postErr || !newPost) {
+      return c.json({ success: false, message: postErr?.message || 'Failed to create post' }, 500);
+    }
+
+    await supabase.from('post_video_sources').insert({
+      post_id: newPost.id,
+      platform: 'streamtape',
+      video_id: videoId
+    });
+
+    if (Array.isArray(categoryIds) && categoryIds.length > 0) {
+      const catInserts = categoryIds.filter(Boolean).map((cid: string) => ({ post_id: newPost.id, category_id: cid }));
+      if (catInserts.length > 0) await supabase.from('post_categories').insert(catInserts);
+    }
+
+    if (Array.isArray(actorNames) && actorNames.length > 0) {
+      for (const aName of actorNames) {
+        if (!aName || !aName.trim()) continue;
+        let actorId = '';
+        const { data: existAct } = await supabase.from('actors').select('id').ilike('name', aName.trim()).maybeSingle();
+        if (existAct) {
+          actorId = existAct.id;
+        } else {
+          const { data: newAct } = await supabase.from('actors').insert({ name: aName.trim() }).select('id').single();
+          if (newAct) actorId = newAct.id;
+        }
+        if (actorId) {
+          await supabase.from('post_actors').insert({ post_id: newPost.id, actor_id: actorId });
+        }
+      }
+    }
+
+    return c.json({ success: true, data: newPost, message: 'Post created successfully!' });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Failed to create post' }, 500);
   }
 });
 
@@ -1395,9 +1515,7 @@ app.post('/api/admin/streamtape/bulk-create', adminAuthMiddleware, async (c) => 
         resolvedChannelId = existCh.id;
       } else {
         const { data: newCh } = await supabase.from('channels').insert({
-          name: channelName.trim(),
-          handle: channelName.trim().toLowerCase().replace(/[^a-z0-9]/g, ''),
-          verified: true
+          name: channelName.trim()
         }).select('id').single();
         if (newCh) resolvedChannelId = newCh.id;
       }
