@@ -62,6 +62,8 @@ app.get('/health', (c) => {
     runtime: 'Cloudflare Workers (Edge)',
     timestamp: new Date().toISOString()
   });
+});
+
 app.get('/yandex_a3d1249cf4b630ef.html', (c) => {
   c.header('Content-Type', 'text/html; charset=UTF-8');
   return c.html('<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head><body>Verification: a3d1249cf4b630ef</body></html>');
