@@ -1155,8 +1155,26 @@ app.get('/api/admin/actors', adminAuthMiddleware, async (c) => {
 app.post('/api/admin/actors', adminAuthMiddleware, async (c) => {
   try {
     const body: any = await c.req.json().catch(() => ({}));
+    const actorName = String(body.name || '').trim();
+    if (!actorName) return c.json({ success: false, message: 'Actor name is required' }, 400);
+
     const supabase = getSupabase(c.env);
-    const { data, error } = await supabase.from('actors').insert(body).select().single();
+
+    const { data: existing } = await supabase
+      .from('actors')
+      .select('id, name')
+      .ilike('name', actorName)
+      .maybeSingle();
+
+    if (existing) {
+      return c.json({ success: false, message: 'Already created.' }, 400);
+    }
+
+    const { data, error } = await supabase.from('actors').insert({
+      name: actorName,
+      image: body.image || '',
+      bio: body.bio || ''
+    }).select().single();
     if (error) throw error;
     return c.json({ success: true, data });
   } catch (error: any) {
@@ -1169,8 +1187,23 @@ app.put('/api/admin/actors/:id', adminAuthMiddleware, async (c) => {
     const id = c.req.param('id');
     const body: any = await c.req.json().catch(() => ({}));
     const supabase = getSupabase(c.env);
+
+    if (body.name) {
+      const updateName = String(body.name).trim();
+      const { data: existing } = await supabase
+        .from('actors')
+        .select('id, name')
+        .ilike('name', updateName)
+        .neq('id', id)
+        .maybeSingle();
+
+      if (existing) {
+        return c.json({ success: false, message: 'Already created.' }, 400);
+      }
+    }
+
     const { data, error } = await supabase.from('actors').update({
-      name: body.name,
+      name: body.name ? String(body.name).trim() : undefined,
       image: body.image || '',
       bio: body.bio || ''
     }).eq('id', id).select().single();
@@ -1216,6 +1249,15 @@ app.post('/api/admin/actors/bulk-create', adminAuthMiddleware, async (c) => {
     }
 
     if (actorRows.length === 0) return c.json({ success: false, message: 'No valid actors to create' }, 400);
+
+    // Prevent duplicates in bulk creation
+    const { data: existingActors } = await supabase.from('actors').select('name');
+    const existingSet = new Set((existingActors || []).map((a: any) => String(a.name || '').trim().toLowerCase()));
+    actorRows = actorRows.filter((a: any) => !existingSet.has(a.name.toLowerCase()));
+
+    if (actorRows.length === 0) {
+      return c.json({ success: false, message: 'Already created.' }, 400);
+    }
 
     const { data, error } = await supabase.from('actors').insert(actorRows).select();
     if (error) throw error;
