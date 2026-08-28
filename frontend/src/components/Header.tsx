@@ -218,7 +218,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                     src={p.thumbnail || `https://thumb.tapecontent.net/thumb/${p.id}/thumb.jpg`} 
                     alt={p.title} 
                     className="w-16 h-10 rounded-lg object-cover bg-white/5 flex-shrink-0"
-                    onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                    onError={e => { e.currentTarget.src = 'https://xonstream.qzz.io/siteicon.ico'; }}
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-white line-clamp-1">{p.title}</p>
@@ -332,7 +332,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                     src={p.thumbnail || `https://thumb.tapecontent.net/thumb/${p.id}/thumb.jpg`} 
                     alt={p.title} 
                     className="w-16 h-10 rounded-lg object-cover bg-white/5 flex-shrink-0 group-hover:scale-105 transition-transform"
-                    onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                    onError={e => { e.currentTarget.src = 'https://xonstream.qzz.io/siteicon.ico'; }}
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-white group-hover:text-accent transition-colors line-clamp-1">
