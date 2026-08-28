@@ -57,4 +57,4 @@ Disallow: /search?*order=*
 Disallow: /search?*filter=*
 
 # Sitemap location
-Sitemap: https://xonstream.com/sitemap.xml
+Sitemap: https://xonstream.qzz.io/sitemap.xml
