@@ -944,15 +944,28 @@ export default function AdminPage() {
   };
 
   const handleSaveActor = async () => {
-    if (!form.name?.trim()) {
+    const actorName = form.name?.trim() || '';
+    if (!actorName) {
       toast.error('Actor name is required');
       return;
     }
+
+    const isEdit = modal?.mode === 'edit';
+    const isDuplicate = actors.some(a => 
+      (isEdit ? a.id !== form.id : true) && 
+      a.name.trim().toLowerCase() === actorName.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      toast.error('Already created.');
+      return;
+    }
+
     setActionLoading(prev => ({ ...prev, saveActor: true }));
     try {
       const payload: any = {
         id: form.id || undefined,
-        name: form.name.trim(),
+        name: actorName,
         image: form.image || '',
         bio: form.bio || ''
       };
@@ -1242,16 +1255,31 @@ export default function AdminPage() {
       return;
     }
 
-    const items = lines.map((line: string) => {
+    const existingNames = new Set(actors.map(a => a.name.trim().toLowerCase()));
+    const seenInInput = new Set<string>();
+    const items: any[] = [];
+
+    for (const line of lines) {
       const parts = line.split('|').map((s: string) => s.trim());
-      return {
-        name: parts[0] || '',
-        image: parts[1] || '',
-        cropX: 50,
-        cropY: 50,
-        cropZoom: 1
-      };
-    }).filter(a => a.name);
+      const name = parts[0] || '';
+      if (!name) continue;
+      const lower = name.toLowerCase();
+      if (!existingNames.has(lower) && !seenInInput.has(lower)) {
+        seenInInput.add(lower);
+        items.push({
+          name,
+          image: parts[1] || '',
+          cropX: 50,
+          cropY: 50,
+          cropZoom: 1
+        });
+      }
+    }
+
+    if (items.length === 0) {
+      toast.error('Already created.');
+      return;
+    }
 
     setActionLoading(prev => ({ ...prev, bulkCreateActors: true }));
     try {
