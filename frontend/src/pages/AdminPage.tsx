@@ -1680,7 +1680,7 @@ export default function AdminPage() {
                           src={buildThumbnailUrl(p.thumbnail)} 
                           alt={p.title}
                           className="w-14 h-9 rounded-lg object-cover bg-white/5 flex-shrink-0"
-                          onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                          onError={e => { e.currentTarget.src = 'https://xonstream.qzz.io/siteicon.ico'; }}
                         />
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-white truncate">{p.title}</p>
@@ -1837,7 +1837,7 @@ export default function AdminPage() {
                                   src={buildThumbnailUrl(post.thumbnail)} 
                                   alt={post.title}
                                   className="w-full h-full object-cover"
-                                  onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                                  onError={e => { e.currentTarget.src = 'https://xonstream.qzz.io/siteicon.ico'; }}
                                 />
                                 <button
                                   onClick={() => {
@@ -1943,7 +1943,7 @@ export default function AdminPage() {
                                       src={buildThumbnailUrl(post.thumbnail)} 
                                       alt={post.title} 
                                       className="w-16 h-10 rounded-lg object-cover bg-white/5 flex-shrink-0"
-                                      onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                                      onError={e => { e.currentTarget.src = 'https://xonstream.qzz.io/siteicon.ico'; }}
                                     />
                                     <div className="min-w-0 max-w-sm">
                                       <p className="font-semibold text-white truncate">{post.title}</p>
@@ -2113,7 +2113,7 @@ export default function AdminPage() {
                                   src={v.thumbnail} 
                                   alt={v.title}
                                   className="w-full h-full object-cover"
-                                  onError={e => { e.currentTarget.src = 'https://xonstream.com/siteicon.ico'; }}
+                                  onError={e => { e.currentTarget.src = 'https://xonstream.qzz.io/siteicon.ico'; }}
                                 />
                                 <button
                                   onClick={() => {
