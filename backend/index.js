@@ -25,25 +25,25 @@ const ramMonitor = new RAMMonitor(cacheService);
 const migrateCategories = async () => {
   try {
     logger.info('Checking category migration status...');
-    
+
     // Check if post_categories table exists
     const { data: existingData, error: checkError } = await supabase
       .from('post_categories')
       .select('post_id')
       .limit(1);
-    
+
     if (checkError && checkError.message.includes('Could not find the table')) {
       logger.warn('post_categories table does not exist, creating it via Supabase API...');
-      
+
       // We need to create the table - use the Supabase management API
       const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-      
+
       if (!supabaseUrl || !supabaseKey) {
         logger.error('Missing Supabase credentials in environment variables');
         return;
       }
-      
+
       // Use the Supabase Management API to create the table
       const response = await fetch(`${supabaseUrl}/rest/v1/`, {
         method: 'POST',
@@ -54,7 +54,7 @@ const migrateCategories = async () => {
           'Prefer': 'resolution=merge-duplicates'
         }
       });
-      
+
       // Since we can't create tables via REST API, we'll use a workaround:
       // Try to insert directly - if table doesn't exist, the error will tell user
       logger.error('CRITICAL: post_categories table must be created in Supabase Dashboard');
@@ -65,66 +65,66 @@ const migrateCategories = async () => {
       logger.error('Error checking post_categories table:', checkError.message);
       return;
     }
-    
+
     logger.info('post_categories table exists, checking for migrations...');
-    
+
     // Check if migration is needed
     const { count: postsWithCategory } = await supabase
       .from('posts')
       .select('id', { count: 'exact', head: true })
       .not('category_id', 'is', null);
-    
+
     const { count: existingAssignments } = await supabase
       .from('post_categories')
       .select('post_id', { count: 'exact', head: true });
-    
+
     logger.info(`Posts with category_id: ${postsWithCategory || 0}`);
     logger.info(`Existing post_categories entries: ${existingAssignments || 0}`);
-    
+
     if (existingAssignments > 0) {
       logger.info('Categories already migrated, skipping...');
       return;
     }
-    
+
     if (postsWithCategory === 0) {
       logger.info('No posts with category_id, nothing to migrate');
       return;
     }
-    
+
     logger.info(`Migrating ${postsWithCategory} category assignments...`);
-    
+
     // Get all posts with category_id
     const { data: posts, error: postsError } = await supabase
       .from('posts')
       .select('id, category_id')
       .not('category_id', 'is', null);
-    
+
     if (postsError) {
       logger.error('Error fetching posts for migration:', postsError);
       return;
     }
-    
+
     if (!posts || posts.length === 0) {
       logger.info('No posts to migrate');
       return;
     }
-    
+
     // Insert into post_categories
     const inserts = posts.map(post => ({
       post_id: post.id,
       category_id: post.category_id
     }));
-    
+
     const { error: insertError, data: inserted } = await supabase
       .from('post_categories')
       .insert(inserts)
       .select();
-    
+
     if (insertError) {
       logger.error('Error during category migration:', insertError);
       return;
     }
-    
+
     logger.info(`✓ Successfully migrated ${inserted?.length || 0} category assignments`);
   } catch (error) {
     logger.error('Category migration failed:', error);

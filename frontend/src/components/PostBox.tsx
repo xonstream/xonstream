@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchChannels } from '@/lib/api';
+import { fetchChannels, fetchActors } from '@/lib/api';
 import type { Post } from '@/lib/types';
 import { generateVideoUrl, formatDate } from '@/lib/utils';
 import { Play, Sparkles } from 'lucide-react';
@@ -74,10 +74,28 @@ const PostBox = memo(function PostBox({ post, layout = 'grid' }: PostBoxProps) {
   const channels = chData?.data ?? [];
   const ch = channels.find(c => c.name === post.channelName);
 
+  // Fetch actors for actor navigation
+  const { data: actData } = useQuery({
+    queryKey: ['actors'],
+    queryFn: fetchActors,
+    staleTime: 300_000,
+  });
+  const allActors = actData?.data ?? [];
+
   const goToChannel = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (ch) navigate(`/channel/${ch.id}`);
     else navigate(`/search?channel=${encodeURIComponent(post.channelName ?? '')}`);
+  };
+
+  const goToActor = (e: React.MouseEvent, actorName: string) => {
+    e.stopPropagation();
+    const found = allActors.find(a => a.name.trim().toLowerCase() === actorName.trim().toLowerCase());
+    if (found?.id) {
+      navigate(`/actor/${found.id}`);
+    } else {
+      navigate(`/actor/${encodeURIComponent(actorName.trim())}`);
+    }
   };
 
   const handleImageLoad = () => {
@@ -163,6 +181,19 @@ const PostBox = memo(function PostBox({ post, layout = 'grid' }: PostBoxProps) {
             <p className="text-[11px] text-muted-foreground mt-1 hover:text-white transition-colors truncate">
               {post.channelName}
             </p>
+          )}
+          {post.actors && post.actors.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {post.actors.slice(0, 2).map((actorName) => (
+                <span
+                  key={actorName}
+                  onClick={(e) => goToActor(e, actorName)}
+                  className="text-[10px] text-pink-400/90 hover:text-pink-300 hover:underline cursor-pointer bg-pink-500/10 px-1.5 py-0.5 rounded transition-colors"
+                >
+                  {actorName}
+                </span>
+              ))}
+            </div>
           )}
           <p className="text-[10px] text-muted-foreground/80 mt-0.5">
             {formatDate(post.createdAt)}
@@ -263,11 +294,8 @@ const PostBox = memo(function PostBox({ post, layout = 'grid' }: PostBoxProps) {
               {post.actors.slice(0, 2).map((actorName) => (
                 <span
                   key={actorName}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/search?actor=${encodeURIComponent(actorName)}`);
-                  }}
-                  className="text-[10px] text-pink-400/90 hover:text-pink-300 hover:underline cursor-pointer bg-pink-500/10 px-1.5 py-0.5 rounded"
+                  onClick={(e) => goToActor(e, actorName)}
+                  className="text-[10px] text-pink-400/90 hover:text-pink-300 hover:underline cursor-pointer bg-pink-500/10 px-1.5 py-0.5 rounded transition-colors"
                 >
                   {actorName}
                 </span>
