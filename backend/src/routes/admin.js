@@ -1064,10 +1064,26 @@ module.exports = async (fastify, opts) => {
         });
       }
 
+      const trimmedName = name.trim();
+
+      // Check if actor with same name already exists
+      const { data: existing } = await supabase
+        .from('actors')
+        .select('id, name')
+        .ilike('name', trimmedName)
+        .maybeSingle();
+
+      if (existing) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Already created.'
+        });
+      }
+
       const { data: actor, error } = await supabase
         .from('actors')
         .insert({
-          name: name.trim(),
+          name: trimmedName,
           image: image || '',
           bio: bio || ''
         })
@@ -1106,6 +1122,22 @@ module.exports = async (fastify, opts) => {
       if (name !== undefined) updateData.name = String(name).trim();
       if (image !== undefined) updateData.image = String(image).trim();
       if (bio !== undefined) updateData.bio = String(bio).trim();
+
+      if (updateData.name) {
+        const { data: existing } = await supabase
+          .from('actors')
+          .select('id, name')
+          .ilike('name', updateData.name)
+          .neq('id', id)
+          .maybeSingle();
+
+        if (existing) {
+          return reply.status(400).send({
+            success: false,
+            message: 'Already created.'
+          });
+        }
+      }
 
       const { data: actor, error } = await supabase
         .from('actors')
@@ -1250,6 +1282,18 @@ module.exports = async (fastify, opts) => {
         return reply.status(400).send({
           success: false,
           message: 'No valid actors provided'
+        });
+      }
+
+      // Check existing actors to prevent duplicates
+      const { data: existingActors } = await supabase.from('actors').select('name');
+      const existingSet = new Set((existingActors || []).map((a) => String(a.name || '').trim().toLowerCase()));
+      actorRows = actorRows.filter((a) => !existingSet.has(a.name.toLowerCase()));
+
+      if (actorRows.length === 0) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Already created.'
         });
       }
 
