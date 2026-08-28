@@ -39,7 +39,7 @@ function buildThumbnailUrl(thumbnailPath: string | null | undefined, videoId?: s
   if (videoId) {
     return getDefaultThumbnailUrl(videoId);
   }
-  return thumbnailPath || 'https://xonstream.com/siteicon.ico';
+  return thumbnailPath || 'https://xonstream.qzz.io/siteicon.ico';
 }
 
 // ── Global CORS Middleware ──────────────────────────────────────────────────
@@ -72,13 +72,13 @@ Disallow: /meow
 Disallow: /meow/*
 Disallow: /api/admin/*
 
-Sitemap: https://xonstream.com/sitemap.xml`);
+Sitemap: https://xonstream.qzz.io/sitemap.xml`);
 });
 
 app.get('/sitemap.xml', async (c) => {
   try {
     const supabase = getSupabase(c.env);
-    const baseUrl = 'https://xonstream.com';
+    const baseUrl = 'https://xonstream.qzz.io';
     const now = new Date().toISOString().split('T')[0];
 
     const [postsRes, channelsRes, actorsRes, categoriesRes] = await Promise.allSettled([
@@ -125,7 +125,7 @@ app.get('/sitemap.xml', async (c) => {
     return c.text(xml);
   } catch (err: any) {
     c.header('Content-Type', 'application/xml');
-    return c.text(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://xonstream.com/</loc></url></urlset>`);
+    return c.text(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://xonstream.qzz.io/</loc></url></urlset>`);
   }
 });
 
