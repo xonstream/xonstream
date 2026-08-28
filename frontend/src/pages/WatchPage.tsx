@@ -283,7 +283,7 @@ export default function WatchPage() {
 
       const siteTitle = `${post.title} — Watch Online in HD | XON STREAM`;
       const siteDesc = post.description || `Watch ${post.title} in Full HD quality for free on XON STREAM. High speed streaming.`;
-      const postThumb = post.thumbnail || 'https://xonstream.com/siteicon.ico';
+      const postThumb = post.thumbnail || 'https://xonstream.qzz.io/siteicon.ico';
       const postUrl = window.location.href;
 
       document.title = siteTitle;
@@ -333,7 +333,7 @@ export default function WatchPage() {
           'name': 'XON STREAM',
           'logo': {
             '@type': 'ImageObject',
-            'url': 'https://xonstream.com/siteicon.ico'
+            'url': 'https://xonstream.qzz.io/siteicon.ico'
           }
         }
       });
