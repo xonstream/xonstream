@@ -230,13 +230,13 @@ Disallow: /meow
 Disallow: /meow/*
 Disallow: /api/admin/*
 
-Sitemap: https://xonstream.com/sitemap.xml`;
+Sitemap: https://xonstream.qzz.io/sitemap.xml`;
     });
 
     // SEO: Dynamic sitemap.xml
     fastify.get('/sitemap.xml', async (request, reply) => {
       try {
-        const baseUrl = 'https://xonstream.com';
+        const baseUrl = 'https://xonstream.qzz.io';
         const now = new Date().toISOString().split('T')[0];
 
         // Fetch posts, channels, actors, categories for sitemap
@@ -340,7 +340,7 @@ Sitemap: https://xonstream.com/sitemap.xml`;
       } catch (err) {
         logger.error('Error generating sitemap:', err);
         reply.type('application/xml');
-        return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://xonstream.com/</loc></url></urlset>`;
+        return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://xonstream.qzz.io/</loc></url></urlset>`;
       }
     });
 
