@@ -216,11 +216,18 @@ export async function saveChannel(ch: Channel): Promise<{ success: boolean; data
   const url = isEdit ? `${API_BASE}/api/admin/channels/${ch.id}` : `${API_BASE}/api/admin/channels`;
   const method = isEdit ? 'PUT' : 'POST';
   
+  const payload: any = {
+    name: (ch.name || '').trim(),
+    logo: ch.logo || '',
+    description: ch.description || ''
+  };
+  if (isEdit) payload.id = ch.id;
+
   const res = await fetch(url, {
     method,
     credentials: 'include',
     headers: getAdminHeaders(),
-    body: JSON.stringify(ch),
+    body: JSON.stringify(payload),
   });
   return res.json();
 }
@@ -426,11 +433,16 @@ export async function bulkCreateCategories(names: string[]): Promise<{ success: 
 }
 
 export async function bulkCreateChannels(data: { names?: string[]; items?: Partial<Channel>[] }): Promise<{ success: boolean; count?: number; data?: Channel[]; message?: string }> {
+  const sanitizedItems = data.items?.map(i => ({
+    name: (i.name || '').trim(),
+    logo: i.logo || '',
+    description: i.description || ''
+  }));
   const res = await fetch(`${API_BASE}/api/admin/channels/bulk-create`, {
     method: 'POST',
     credentials: 'include',
     headers: getAdminHeaders(),
-    body: JSON.stringify(data),
+    body: JSON.stringify({ names: data.names, items: sanitizedItems }),
   });
   return res.json();
 }
